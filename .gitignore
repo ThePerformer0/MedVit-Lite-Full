@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data (too large for git)
+data/raw/
+data/processed/
+*.csv
+*.h5
+*.hdf5
+*.pkl
+
+# Model checkpoints (too large for git)
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Experiment logs
+runs/
+logs/
+wandb/
+mlruns/
+
+# Notebooks outputs
+notebooks/.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Results (keep structure, not files)
+results/*.png
+results/*.json
