@@ -2,169 +2,108 @@
 
 **A Hierarchical Adaptive Transformer for Streaming Medical Diagnosis on Edge Devices**
 
-> *"Can a small, efficient model diagnose diseases as well as a large one — and explain why?"*
+> *Work in progress*
 
 ---
 
 ## Motivation
 
-In sub-Saharan Africa and other resource-constrained regions, access to medical imaging specialists is severely limited. A general practitioner in a rural clinic may have an ultrasound machine but no radiologist nearby to interpret the results.
+In many resource-constrained regions, access to medical imaging specialists is severely limited. A clinician may have an ultrasound or X-ray machine but no radiologist nearby to interpret results.
 
-**MedViT-Lite** is a research prototype exploring whether a lightweight Vision Transformer can:
-- Detect 14 pulmonary pathologies from chest X-rays
+**MedViT-Lite** explores whether a lightweight Vision Transformer can:
+- Detect pulmonary pathologies from chest X-rays
 - Run on a tablet or low-power edge device
 - Explain its decisions visually to clinicians
-- Know when it is uncertain and should defer to a human expert
+- Know when it is uncertain and defer to a human expert
 
-This is a final-year Master's research project. The goal is not clinical deployment but **rigorous scientific evaluation** of architectural innovations for efficient medical AI.
+The goal is not clinical deployment but **rigorous scientific evaluation** of architectural innovations for efficient medical AI.
 
 ---
 
-## Architecture Overview
+## Proposed Architecture
 
 ```
 Input Image (224×224)
         │
         ▼
 ┌─────────────────────────────────┐
-│   CNN Patch Encoder             │  EfficientNet-lite backbone
-│   → 196 patch tokens [B,196,D]  │
+│   CNN Patch Encoder             │  Patch embedding backbone
 └──────────────┬──────────────────┘
                │
                ▼
 ┌─────────────────────────────────┐
-│  Dynamic Patch Sparsifier (DPS) │  ← INNOVATION 1
-│  Score each patch → keep top 50%│  98 tokens (vs 196)
-│  4× less attention computation  │
+│  Dynamic Patch Sparsifier (DPS) │  ← Innovation 1
+│  Score each patch → keep top K% │  Reduces attention cost
 └──────────────┬──────────────────┘
                │
                ▼
 ┌─────────────────────────────────┐
-│  Selective Frame Cache (SFC)    │  ← INNOVATION 2 (video/streaming)
-│  Reuse features for similar     │  ~70% cache hit rate
-│  frames → 3× faster inference   │
+│  Selective Frame Cache (SFC)    │  ← Innovation 2 (video/streaming)
+│  Reuse features for similar     │  Reduces redundant computation
+│  frames in medical video        │
 └──────────────┬──────────────────┘
                │
                ▼
 ┌─────────────────────────────────┐
 │  Hierarchical Temporal Attention│  Local (intra-frame) + Global (inter-frame)
-│  Local  : what is in this frame │
-│  Global : how does it evolve?   │
 └──────────────┬──────────────────┘
                │
                ▼
 ┌─────────────────────────────────┐
-│  Classification Head            │  Multi-label (14 pathologies)
-│  + Uncertainty Estimator        │  Monte Carlo Dropout (N=10 passes)
+│  Classification Head            │  Multi-label prediction
+│  + Uncertainty Estimator        │  Monte Carlo Dropout
 └──────────────┬──────────────────┘
                │
-        ┌──────┴──────┐
-        ▼             ▼
-  Predictions    Uncertainty
-  "Pneumonia     "Confidence: 94%
-   Effusion"      ⚠️ Atelectasis: uncertain"
-        │
-        ▼
+               ▼
 ┌─────────────────────────────────┐
-│  GradCAM++ Explainability       │  Heatmap: WHY this prediction?
+│  GradCAM++ Explainability       │  Visual explanation for clinicians
 └─────────────────────────────────┘
 ```
 
 ---
 
-## Key Innovations
+## Key Design Choices
 
-| Innovation | Problem Solved | Expected Gain |
-|---|---|---|
-| **Dynamic Patch Sparsification** | Transformers compute attention over ALL patches (even background) | 4× fewer attention operations at 50% keep-ratio |
-| **Selective Frame Caching** | Video processing recomputes identical frames | ~70% cache hit rate on medical video |
-| **Hierarchical Temporal Attention** | Single-scale attention misses multi-scale temporal patterns | Captures both frame-level and sequence-level information |
-| **Monte Carlo Uncertainty** | Overconfident predictions are dangerous in medicine | Quantified uncertainty → reject ambiguous cases |
-
----
-
-## Experimental Protocol
-
-We compare MedViT-Lite against three baselines on the NIH Chest X-Ray dataset:
-
-| Model | Type | Parameters | GFLOPs |
-|---|---|---|---|
-| ResNet-50 | CNN | 25M | 4.1 |
-| ViT-B/16 | Transformer | 86M | 16.8 |
-| TimeSformer | Video Transformer | 121M | 196 |
-| **MedViT-Lite** | **Ours** | **~35M** | **~3.2*** |
-
-*\* estimated with DPS at 50% keep-ratio*
-
-### Ablation Study
-
-To prove each component contributes, we run ablations:
-
-| Config | DPS | SFC | HTA | AUC | GFLOPs |
-|---|---|---|---|---|---|
-| Full MedViT-Lite | ✅ | ✅ | ✅ | TBD | TBD |
-| w/o DPS | ❌ | ✅ | ✅ | TBD | TBD |
-| w/o SFC | ✅ | ❌ | ✅ | TBD | TBD |
-| w/o HTA | ✅ | ✅ | ❌ | TBD | TBD |
-| Baseline ViT | ❌ | ❌ | ❌ | TBD | TBD |
+| Component | Motivation |
+|---|---|
+| **Dynamic Patch Sparsification** | Most patches in a medical image are uninformative background. Only process what matters. |
+| **Selective Frame Caching** | Consecutive frames in medical video are often redundant. Avoid recomputing identical features. |
+| **Hierarchical Temporal Attention** | Capture both local (within a frame) and global (across frames) structure. |
+| **Monte Carlo Uncertainty** | A model that cannot express uncertainty is unsafe in a clinical context. |
+| **GradCAM++ Explainability** | Clinicians must understand *why* a prediction was made, not just *what* it is. |
 
 ---
 
 ## Dataset
 
-**ChestMNIST** (prototyping) → **NIH Chest X-Ray** (evaluation)
+**ChestMNIST** (prototyping) → **NIH Chest X-Ray** (full evaluation)
 
-- 112,120 frontal chest X-rays
-- 14 pathology labels (multi-label)
-- Public domain (NIH Clinical Center)
-
-```python
-# Download automatically via MedMNIST
-from medmnist import ChestMNIST
-dataset = ChestMNIST(split='train', download=True)
-```
+- 112,120 frontal chest X-rays from NIH Clinical Center
+- 14 pathology labels (multi-label classification)
+- Publicly available
 
 ---
 
-## Setup & Reproduction
+## Experimental Plan
 
-### Requirements
-- Python 3.10+
-- PyTorch 2.1+ with CUDA 11.8
-- 4× NVIDIA V100 16GB (or equivalent)
+We will compare MedViT-Lite against the following baselines:
 
-### Installation
+- **ResNet-50** — standard CNN reference
+- **ViT-B/16** — vanilla Vision Transformer (no medical adaptation)
+- **TimeSformer** — video Transformer reference (Bertasius et al., 2021)
 
-```bash
-# Clone
-git clone https://github.com/YOUR_USERNAME/Med-Vit-Lite.git
-cd Med-Vit-Lite
+We will also run an **ablation study** removing each innovation one at a time to measure its individual contribution.
 
-# Environment (CloudLab)
-bash scripts/setup_cloudlab.sh
+*Results will be added here once experiments are complete.*
 
-# Or local
-pip install -r requirements.txt
-```
+---
 
-### Training
+## Evaluation Metrics
 
-```bash
-# Step 1: Train baselines
-python experiments/baseline_cnn.py --config configs/baseline_cnn.yaml
-
-# Step 2: Train MedViT-Lite
-python experiments/medvit_lite_train.py --config configs/base.yaml
-
-# Step 3: Run ablations
-bash scripts/run_ablations.sh
-```
-
-### Evaluation & Explainability
-
-```bash
-python experiments/evaluate.py --checkpoint checkpoints/best_medvit_lite.pth
-```
+- **AUC-ROC** — standard medical AI benchmark
+- **Sensitivity @ Specificity = 95%** — clinically relevant threshold
+- **GFLOPs** — computational cost (edge deployment feasibility)
+- **Uncertainty Calibration (ECE)** — safety of confidence scores
 
 ---
 
@@ -174,63 +113,60 @@ python experiments/evaluate.py --checkpoint checkpoints/best_medvit_lite.pth
 Med-Vit-Lite/
 ├── configs/               # Hyperparameter configurations (YAML)
 ├── data/
-│   ├── datasets/          # ChestMNIST, NIH Chest X-Ray loaders
+│   ├── datasets/          # ChestMNIST and NIH Chest X-Ray loaders
 │   └── transforms/        # Medical augmentation pipeline
 ├── models/
 │   ├── backbone/          # CNN encoder (patch embedding)
-│   ├── sparsifier/        # Dynamic Patch Sparsifier [INNOVATION 1]
-│   ├── cache/             # Selective Frame Cache    [INNOVATION 2]
+│   ├── sparsifier/        # Dynamic Patch Sparsifier  [Innovation 1]
+│   ├── cache/             # Selective Frame Cache      [Innovation 2]
 │   ├── attention/         # Hierarchical Temporal Attention
 │   ├── head/              # Classification + Uncertainty head
 │   └── medvit_lite.py     # Full model assembly
 ├── training/              # Trainer, losses, metrics
 ├── explainability/        # GradCAM++, Attention Rollout
-├── experiments/           # Training scripts (baselines + MedViT-Lite)
-├── scripts/               # CloudLab setup, training launchers
-└── paper/                 # LaTeX draft
+├── experiments/           # Training scripts
+└── scripts/               # CloudLab setup, training launchers
 ```
 
 ---
 
-## Evaluation Metrics
+## Setup
 
-| Metric | Description | Clinical Relevance |
-|---|---|---|
-| **AUC-ROC** | Area Under ROC Curve | Standard medical AI benchmark |
-| **Sensitivity @ Specificity=95%** | True positive rate with controlled false positives | Clinically meaningful threshold |
-| **F1 Score (macro)** | Harmonic mean of precision and recall | Balanced performance on imbalanced labels |
-| **GFLOPs** | Computational cost | Edge deployment feasibility |
-| **Uncertainty Calibration** | ECE (Expected Calibration Error) | Safety of confidence scores |
+```bash
+# Clone
+git clone https://github.com/ThePerformer0/MedVit-Lite-Full.git
+cd MedVit-Lite-Full
 
----
+# Install dependencies
+pip install -r requirements.txt
 
-## Research Questions
-
-1. **Does temporal memory improve diagnosis?** → Compare with/without SFC on video data
-2. **Can smaller models outperform large ones?** → MedViT-Lite vs TimeSformer
-3. **How explainable is the model to clinicians?** → GradCAM++ faithfulness evaluation
-
----
-
-## Citation
-
-If you use this work, please cite:
-
-```bibtex
-@misc{medvitlite2026,
-  title   = {MedViT-Lite: A Hierarchical Adaptive Transformer for Streaming Medical Diagnosis},
-  author  = {[Author Name]},
-  year    = {2026},
-  note    = {Master's Capstone Project, ENSPY}
-}
+# CloudLab setup (c4130, 4× V100)
+bash scripts/setup_cloudlab.sh
 ```
+
+---
+
+## Status
+
+| Component | Status |
+|---|---|
+| Project structure | ✅ Done |
+| Data pipeline (ChestMNIST) | ✅ Done |
+| Dynamic Patch Sparsifier | ✅ Done |
+| Selective Frame Cache | ✅ Done |
+| Hierarchical Temporal Attention | 🔄 In progress |
+| Classification Head + Uncertainty | 🔄 In progress |
+| Full model assembly | ⏳ Pending |
+| Baseline experiments | ⏳ Pending |
+| MedViT-Lite training | ⏳ Pending |
+| Ablation study | ⏳ Pending |
+| GradCAM++ explainability | ⏳ Pending |
+| Results & analysis | ⏳ Pending |
 
 ---
 
 ## Disclaimer
 
-This is a research prototype. It has **not** been validated for clinical use and should **not** be used for actual medical diagnosis. Always consult a qualified medical professional.
+This is a research prototype. It has **not** been validated for clinical use and must **not** be used for actual medical diagnosis. Always consult a qualified medical professional.
 
 ---
-
-*Built as part of the ENSPY Final-Year Capstone Project on Generative and Agentic AI Architectures.*
