@@ -13,6 +13,7 @@ Design :
 
 import os
 import time
+import gc
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -241,6 +242,10 @@ class Trainer:
 
                 progress.advance(task)
 
+            # Nettoyage mémoire de fin d'epoch
+            del images, labels, logits, loss
+            gc.collect()
+
         avg_loss = total_loss / n_batches
         return avg_loss
 
@@ -275,6 +280,10 @@ class Trainer:
                     total_loss += loss.item()
                     self.metrics.update(logits, labels)
                     progress.advance(task)
+
+                # Nettoyage mémoire de fin d'epoch
+                del images, labels, logits, loss
+                gc.collect()
 
         val_metrics = self.metrics.compute()
         val_metrics["val_loss"] = total_loss / n_batches

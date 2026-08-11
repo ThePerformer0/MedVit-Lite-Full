@@ -15,8 +15,8 @@ data:
   data_root: "/kaggle/working/data/raw"
   image_size: 224
   num_classes: 14
-  num_workers: 4                 # Kaggle = 4 CPUs
-  pin_memory: true
+  num_workers: 2                 # Kaggle = 4 CPUs, mais 2 évite les fuites RAM
+  pin_memory: false              # Désactivé pour éviter les fuites RAM (OOM) sur Kaggle
 
   train_split: 0.7
   val_split: 0.15
