@@ -39,50 +39,51 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class ResNet50Medical(nn.Module):
+    """
+    ResNet-50 encapsulé dans un vrai nn.Module pour compatibilité DataParallel.
+
+    Pourquoi ce wrapper :
+      - DataParallel réplique les nn.Module correctement sur chaque GPU
+      - Le monkeypatching de model.forward avec une closure est incompatible :
+        la closure capture une référence au modèle original (GPU 0) et
+        les répliques sur GPU 1 appellent les poids du mauvais device.
+    """
+    def __init__(self, num_classes: int, pretrained: bool = True):
+        super().__init__()
+        # Backbone ResNet-50 sans tête (num_classes=0) avec GAP intégré
+        self.backbone = timm.create_model(
+            "resnet50",
+            pretrained=pretrained,
+            num_classes=0,       # Enlève la tête ImageNet
+            global_pool="avg",   # Global Average Pooling → [B, 2048]
+        )
+        embed_dim = self.backbone.num_features  # 2048
+
+        # Tête de classification multi-label médicale
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(embed_dim, 256),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # backbone.forward() inclut déjà le Global Avg Pool → [B, 2048]
+        features = self.backbone(x)
+        return self.classifier(features)
+
+
 def build_resnet50(num_classes: int, pretrained: bool = True) -> nn.Module:
     """
     Construit ResNet-50 adapté à la classification médicale multi-label.
-
-    Modifications par rapport au ResNet-50 standard ImageNet :
-      - Dernière couche FC adaptée pour num_classes (14 ici)
-      - Pas de softmax (on utilise sigmoid pour multi-label)
-      - Dropout ajouté avant la couche finale (régularisation)
     """
-    # timm gère le téléchargement des poids pré-entraînés
-    model = timm.create_model(
-        "resnet50",
-        pretrained=pretrained,
-        num_classes=0,        # Enlève la tête ImageNet (1000 classes)
-        global_pool="avg",    # Global Average Pooling
-    )
-    embed_dim = model.num_features  # 2048 pour ResNet-50
-
-    # Nouvelle tête adaptée au multi-label médical
-    classifier = nn.Sequential(
-        nn.Dropout(0.3),
-        nn.Linear(embed_dim, 256),
-        nn.GELU(),
-        nn.Dropout(0.3),
-        nn.Linear(256, num_classes),
-    )
-
-    # Attacher la tête au modèle
-    model.head = classifier
-
-    # Modifier le forward pour utiliser notre tête
-    original_forward = model.forward_features
-
-    def custom_forward(x):
-        features = original_forward(x)           # [B, 2048, 7, 7] — carte spatiale
-        if features.dim() == 4:
-            features = features.mean(dim=[-2, -1])  # Global Avg Pool → [B, 2048]
-        return model.head(features)
-
-    model.forward = custom_forward
-
+    model = ResNet50Medical(num_classes=num_classes, pretrained=pretrained)
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
-    logger.info(f"ResNet-50 : {n_params:.1f}M paramètres (pretrained={pretrained})")
+    logger.info(f"ResNet-50 : {n_params:.1f}M param\u00e8tres (pretrained={pretrained})")
     return model
+
 
 
 def main(args):

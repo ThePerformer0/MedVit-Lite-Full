@@ -16,7 +16,7 @@ import time
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast   # API unifiée (torch 2.x)
 from typing import Optional, Dict, Any
 import logging
 from rich.console import Console
@@ -82,9 +82,9 @@ class Trainer:
         self.loss_fn      = loss_fn.to(self.device)
         self.metrics      = metrics
 
-        # ── Mixed Precision (AMP) ─────────────────────────────────────────────
-        self.use_amp = config.get("amp", True) and device == "cuda"
-        self.scaler  = GradScaler() if self.use_amp else None
+        # ── Mixed Precision (AMP) ────────────────────────────────────────────
+        self.use_amp = config.get("amp", True) and str(device).startswith("cuda")
+        self.scaler  = GradScaler("cuda") if self.use_amp else None
         if self.use_amp:
             logger.info("Mixed Precision (AMP fp16) activé")
 
@@ -203,7 +203,7 @@ class Trainer:
                 labels = labels.to(self.device, non_blocking=True)
 
                 # ── Forward avec AMP ──────────────────────────────────────────
-                with autocast(enabled=self.use_amp):
+                with autocast("cuda", enabled=self.use_amp):
                     logits = self.model(images)
                     loss   = self.loss_fn(logits, labels)
                     loss   = loss / self.grad_accum
