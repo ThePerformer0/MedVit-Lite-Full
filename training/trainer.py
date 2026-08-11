@@ -268,7 +268,7 @@ class Trainer:
                     images = images.to(self.device, non_blocking=True)
                     labels = labels.to(self.device, non_blocking=True)
 
-                    with autocast(enabled=self.use_amp):
+                    with autocast("cuda", enabled=self.use_amp):
                         logits = self.model(images)
                         loss   = self.loss_fn(logits, labels)
 
