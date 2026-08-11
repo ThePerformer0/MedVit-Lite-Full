@@ -96,12 +96,15 @@ class ChestMNISTDataset(Dataset):
 
         # ── Chargement du dataset ────────────────────────────────────────────
         logger.info(f"Chargement ChestMNIST [{split}]...")
+        import os
+        os.makedirs(root, exist_ok=True)   # garantit que le dossier existe
         self.dataset = MedMNISTChest(
             split=split,
             transform=self.transform,
             download=download,
             root=root,
-            size=image_size,
+            # size=image_size : non supporté (valeurs valides : 28, 64, 128)
+            # Le resize à 224 est déjà géré par transforms.Resize ci-dessus
             as_rgb=True,
         )
 
