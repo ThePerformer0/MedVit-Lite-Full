@@ -73,7 +73,9 @@ def build_resnet50(num_classes: int, pretrained: bool = True) -> nn.Module:
     original_forward = model.forward_features
 
     def custom_forward(x):
-        features = original_forward(x)
+        features = original_forward(x)           # [B, 2048, 7, 7] — carte spatiale
+        if features.dim() == 4:
+            features = features.mean(dim=[-2, -1])  # Global Avg Pool → [B, 2048]
         return model.head(features)
 
     model.forward = custom_forward
