@@ -2,6 +2,7 @@
 # MedViT-Lite — Base Configuration
 # ============================================================
 
+
 project:
   name: "MedViT-Lite"
   description: "Hierarchical Adaptive Transformer for Medical Diagnosis"
@@ -10,22 +11,20 @@ project:
 
 # ─── Dataset ────────────────────────────────────────────────
 data:
-  dataset: "chestmnist"          # "chestmnist" | "nih_chestxray"
-  data_root: "./data/raw"
-  image_size: 224                # resize target
-  num_classes: 14                # 14 pathologies (NIH / ChestMNIST)
-  num_workers: 8
+  dataset: "chestmnist"          # Auto-download via medmnist (~200 Mo)
+  data_root: "/kaggle/working/data/raw"
+  image_size: 224
+  num_classes: 14
+  num_workers: 4                 # Kaggle = 4 CPUs
   pin_memory: true
 
-  # Splits
   train_split: 0.7
   val_split: 0.15
   test_split: 0.15
 
-  # Augmentation
   augmentation:
     horizontal_flip: true
-    random_rotation: 15          # degrees
+    random_rotation: 15
     color_jitter: true
     normalize_mean: [0.485, 0.456, 0.406]
     normalize_std:  [0.229, 0.224, 0.225]
@@ -33,45 +32,39 @@ data:
 # ─── Model ──────────────────────────────────────────────────
 model:
   name: "medvit_lite"
+  patch_size: 16
+  embed_dim: 384
+  depth: 6
 
-  # Patch configuration
-  patch_size: 16                 # pixels per patch side → (224/16)² = 196 patches
-  embed_dim: 384                 # embedding dimension (smaller = plus léger)
-  depth: 6                       # number of Transformer blocks
-
-  # Dynamic Patch Sparsifier (DPS)
   sparsifier:
     enabled: true
-    keep_ratio: 0.5              # garder 50% des patches → 98 patches actifs
+    keep_ratio: 0.5
     scorer_hidden_dim: 128
-    temperature: 1.0             # pour Gumbel-Softmax
+    temperature: 1.0
 
-  # Selective Frame Cache (SFC)
   frame_cache:
     enabled: true
-    cache_size: 4                # nombre de frames mémorisées
-    similarity_threshold: 0.92  # cosine similarity au-delà duquel on réutilise
-    update_strategy: "lru"       # least-recently-used
+    cache_size: 4
+    similarity_threshold: 0.92
+    update_strategy: "lru"
 
-  # Hierarchical Temporal Attention (HTA)
   attention:
     num_heads: 6
-    local_window_size: 7         # attention locale (intra-frame)
+    local_window_size: 7
     dropout: 0.1
     attn_dropout: 0.1
 
-  # Classification Head
   head:
     hidden_dim: 256
     dropout: 0.3
-    use_uncertainty: true        # Monte Carlo Dropout pour incertitude
-    mc_samples: 10               # nombre de passes MC à l'inférence
+    use_uncertainty: true
+    mc_samples: 10
 
 # ─── Training ───────────────────────────────────────────────
 training:
   epochs: 50
-  batch_size: 64                 # par GPU (×4 GPUs = 256 effective)
-  gradient_accumulation: 1
+  batch_size: 32                 # T4 16Go : 32 par GPU (×2 = 64 effectif)
+  gradient_accumulation: 2       # Simule batch_size=64 par GPU
 
   optimizer:
     name: "adamw"
@@ -85,17 +78,16 @@ training:
     min_lr: 1.0e-6
 
   loss:
-    name: "bce_with_logits"      # multi-label classification
-    pos_weight: null             # calculé dynamiquement si null
+    name: "bce_with_logits"
+    pos_weight: null
 
   # Multi-GPU
   distributed: true
-  num_gpus: 4                    # c4130 : 4× V100
+  num_gpus: 2                    
 
-  # Mixed precision
-  amp: true                      # Automatic Mixed Precision (fp16)
+  # Mixed precision (T4 a d'excellentes perf fp16)
+  amp: true
 
-  # Early stopping
   early_stopping:
     patience: 10
     monitor: "val_auc"
@@ -108,18 +100,18 @@ evaluation:
     - "sensitivity_at_specificity_95"
     - "f1_score"
     - "average_precision"
-  threshold: 0.5                 # classification threshold
+  threshold: 0.5
 
 # ─── Explainability ─────────────────────────────────────────
 explainability:
-  method: "gradcam_plus_plus"    # "gradcam_plus_plus" | "attention_rollout"
+  method: "gradcam_plus_plus"
   target_layer: "attention.norm2"
-  generate_every_n_epochs: 5
+  generate_every_n_epochs: 10    # Moins fréquent pour économiser le temps
 
 # ─── Logging ────────────────────────────────────────────────
 logging:
-  use_wandb: true
+  use_wandb: false               # Désactivé (pas besoin de clé API)
   project: "medvit-lite"
   log_every_n_steps: 10
-  save_dir: "./checkpoints"
-  results_dir: "./results"
+  save_dir: "/kaggle/working/checkpoints"
+  results_dir: "/kaggle/working/results"
