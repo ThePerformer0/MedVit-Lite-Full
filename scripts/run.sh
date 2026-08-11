@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -eo pipefail   # -e = stop on error, -o pipefail = catch errors through pipes
 
 SESSION1=false
 SESSION2=false
@@ -22,7 +22,7 @@ if [ "$SESSION1" = false ] && [ "$SESSION2" = false ]; then
     SESSION2=true
 fi
 
-CONFIG="configs/kaggle.yaml"
+CONFIG="configs/base.yaml"   # base.yaml contient déjà la config Kaggle
 LOG_DIR="/kaggle/working/logs"
 CKPT_DIR="/kaggle/working/checkpoints"
 
