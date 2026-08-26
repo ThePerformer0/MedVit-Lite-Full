@@ -90,7 +90,7 @@ training:
 
   early_stopping:
     patience: 10
-    monitor: "val_auc"
+    monitor: "val_auc_mean"
     mode: "max"
 
 # ─── Evaluation ─────────────────────────────────────────────

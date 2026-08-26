@@ -106,6 +106,8 @@ class Trainer:
         es_config = config.get("early_stopping", {})
         self.es_patience = es_config.get("patience", 10)
         self.es_monitor  = es_config.get("monitor", "val_auc_mean")
+        if self.es_monitor == "val_auc":
+            self.es_monitor = "val_auc_mean"
         self.es_mode     = es_config.get("mode", "max")
 
         self.best_metric = -float("inf") if self.es_mode == "max" else float("inf")
@@ -151,7 +153,10 @@ class Trainer:
     def _load_resume_checkpoint(self, checkpoint_path: str):
         """Charge l'état complet d'entraînement pour reprise."""
         logger.info(f"🔄 Tentative de reprise depuis : {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
         raw_model.load_state_dict(checkpoint["model_state"])
@@ -230,7 +235,10 @@ class Trainer:
             self._save_checkpoint(epoch, val_metrics, is_best=False, is_last=True)
 
             # ── Checkpoint : Sauvegarder si meilleur résultat ─────────────────
-            monitor_value = val_metrics.get(self.es_monitor, 0.0)
+            monitor_value = val_metrics.get(
+                self.es_monitor,
+                val_metrics.get(f"{self.es_monitor}_mean", val_metrics.get("val_auc_mean", 0.0))
+            )
             is_best = self._is_better(monitor_value)
 
             if is_best:
@@ -461,8 +469,12 @@ class Trainer:
         cls, checkpoint_path: str, model: nn.Module, device: str = "cuda"
     ) -> Dict[str, Any]:
         """Charge un checkpoint et retourne les métadonnées."""
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state"])
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+        raw_model = model.module if isinstance(model, nn.DataParallel) else model
+        raw_model.load_state_dict(checkpoint["model_state"])
         model.to(device)
         logger.info(
             f"Checkpoint chargé : {checkpoint_path} "
