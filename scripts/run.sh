@@ -43,6 +43,13 @@ if [ "$SESSION1" = false ] && [ "$SESSION2" = false ]; then
     SESSION2=true
 fi
 
+# Vérifier et installer les dépendances si nécessaire
+if ! python -c "import medmnist, timm, einops, rich" &> /dev/null; then
+    echo "📦 Installation des dépendances manquantes (medmnist, timm, einops, rich)..."
+    pip install -q -r requirements.txt || pip install -q medmnist timm einops rich wandb pyyaml
+    echo "✅ Dépendances installées avec succès."
+fi
+
 CONFIG="configs/base.yaml"   # base.yaml contient déjà la config Kaggle
 LOG_DIR="/kaggle/working/logs"
 CKPT_DIR="/kaggle/working/checkpoints"
