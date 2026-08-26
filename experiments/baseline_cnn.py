@@ -190,6 +190,10 @@ if __name__ == "__main__":
                         help="Entraîner sans poids pré-entraînés")
     parser.add_argument("--no-wandb", action="store_true",
                         help="Désactiver W&B logging")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Mode test rapide (sous-ensemble de données, 2 epochs)")
+    parser.add_argument("--resume", action="store_true",
+                        help="Reprendre l'entraînement depuis le dernier checkpoint")
     args = parser.parse_args()
 
     main(args)
