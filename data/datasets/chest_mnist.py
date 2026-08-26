@@ -157,6 +157,7 @@ def build_dataloaders(
     num_workers: int = 8,
     root: str = "./data/raw",
     pin_memory: bool = True,
+    dry_run: bool = False,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Construit les DataLoaders train/val/test pour ChestMNIST.
@@ -167,6 +168,7 @@ def build_dataloaders(
         num_workers : threads de chargement
         root        : dossier des données
         pin_memory  : accélère le transfert CPU→GPU
+        dry_run     : si True, utilise un petit sous-ensemble pour test rapide
 
     Returns:
         (train_loader, val_loader, test_loader)
@@ -175,13 +177,25 @@ def build_dataloaders(
     val_dataset   = ChestMNISTDataset("val",   image_size, root)
     test_dataset  = ChestMNISTDataset("test",  image_size, root)
 
+    if dry_run:
+        from torch.utils.data import Subset
+        logger.info("🧪 Mode DRY-RUN activé : sous-ensemble réduit (train=200, val=50, test=50)")
+        train_subset = Subset(train_dataset, list(range(min(200, len(train_dataset)))))
+        train_subset.get_class_weights = train_dataset.get_class_weights
+        train_subset.get_prevalence = train_dataset.get_prevalence
+        val_subset = Subset(val_dataset, list(range(min(50, len(val_dataset)))))
+        test_subset = Subset(test_dataset, list(range(min(50, len(test_dataset)))))
+        train_dataset = train_subset
+        val_dataset = val_subset
+        test_dataset = test_subset
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,          # mélanger à chaque epoch
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True,        # ignorer le dernier batch incomplet
+        drop_last=False if dry_run else True, # ne pas perdre de batch en dry-run
     )
 
     val_loader = DataLoader(

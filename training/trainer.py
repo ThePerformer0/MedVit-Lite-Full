@@ -14,6 +14,7 @@ Design :
 import os
 import time
 import gc
+import json
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -35,15 +36,18 @@ class Trainer:
         model        : modèle PyTorch (non-wrappé, le Trainer s'occupe du multi-GPU)
         train_loader : DataLoader d'entraînement
         val_loader   : DataLoader de validation
-        optimizer    : optimizer PyTorch
-        scheduler    : scheduler de learning rate
+        optimizer    : optimiseur PyTorch
+        scheduler    : learning rate scheduler
         loss_fn      : fonction de perte
-        metrics      : MetricsTracker
-        config       : dict de configuration (section "training" du YAML)
-        device       : device PyTorch ('cuda' ou 'cpu')
-        save_dir     : répertoire de sauvegarde des checkpoints
-        use_wandb    : activer le logging W&B
-        run_name     : nom de l'expérience (pour les logs)
+        metrics      : Tracker de métriques
+        config       : dictionnaire de configuration
+        device       : "cuda" ou "cpu"
+        save_dir     : dossier de sauvegarde des checkpoints
+        use_wandb    : bool
+        run_name     : nom de l'expérience
+        dry_run      : si True, limite à 2 epochs pour test rapide
+        resume       : si True, reprend depuis save_dir/last_{run_name}.pth
+        resume_path  : chemin optionnel d'un checkpoint spécifique
     """
 
     def __init__(
@@ -60,12 +64,16 @@ class Trainer:
         save_dir: str = "./checkpoints",
         use_wandb: bool = False,
         run_name: str = "medvit_lite",
+        dry_run: bool = False,
+        resume: bool = False,
+        resume_path: Optional[str] = None,
     ):
         self.config = config
         self.device = torch.device(device)
         self.save_dir = save_dir
         self.use_wandb = use_wandb
         self.run_name = run_name
+        self.dry_run = dry_run
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -90,7 +98,7 @@ class Trainer:
             logger.info("Mixed Precision (AMP fp16) activé")
 
         # ── Hyperparamètres ───────────────────────────────────────────────────
-        self.max_epochs  = config.get("epochs", 50)
+        self.max_epochs  = 2 if dry_run else config.get("epochs", 50)
         self.grad_accum  = config.get("gradient_accumulation", 1)
         self.log_every   = config.get("log_every_n_steps", 10)
 
@@ -103,6 +111,18 @@ class Trainer:
         self.best_metric = -float("inf") if self.es_mode == "max" else float("inf")
         self.patience_counter = 0
         self.best_epoch = 0
+        self.start_epoch = 1
+        self.history = []
+
+        # ── Reprise (Resume) ──────────────────────────────────────────────────
+        target_resume = resume_path
+        if not target_resume and resume:
+            default_ckpt = os.path.join(save_dir, f"last_{run_name}.pth")
+            if os.path.exists(default_ckpt):
+                target_resume = default_ckpt
+
+        if target_resume and os.path.exists(target_resume):
+            self._load_resume_checkpoint(target_resume)
 
         # ── W&B ──────────────────────────────────────────────────────────────
         if use_wandb:
@@ -112,6 +132,7 @@ class Trainer:
                     project=config.get("wandb_project", "medvit-lite"),
                     name=run_name,
                     config=config,
+                    resume="allow" if resume else False,
                 )
                 self.wandb = wandb
                 logger.info(f"W&B initialisé : projet={config.get('wandb_project')}")
@@ -119,17 +140,61 @@ class Trainer:
                 logger.warning("wandb non installé — logging W&B désactivé")
                 self.use_wandb = False
 
+        if dry_run:
+            logger.info("🧪 Mode DRY-RUN actif : max_epochs=2")
+
         logger.info(
-            f"Trainer prêt : {self.max_epochs} epochs, "
+            f"Trainer prêt : {self.max_epochs} epochs (start={self.start_epoch}), "
             f"device={device}, amp={self.use_amp}, gpus={self.num_gpus}"
+        )
+
+    def _load_resume_checkpoint(self, checkpoint_path: str):
+        """Charge l'état complet d'entraînement pour reprise."""
+        logger.info(f"🔄 Tentative de reprise depuis : {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+        raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        raw_model.load_state_dict(checkpoint["model_state"])
+
+        if "optimizer_state" in checkpoint and checkpoint["optimizer_state"] is not None:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+        if "scheduler_state" in checkpoint and checkpoint["scheduler_state"] is not None and self.scheduler is not None:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+        if "scaler_state" in checkpoint and checkpoint["scaler_state"] is not None and self.scaler is not None:
+            self.scaler.load_state_dict(checkpoint["scaler_state"])
+
+        self.start_epoch = checkpoint.get("epoch", 0) + 1
+        self.best_metric = checkpoint.get("best_metric", self.best_metric)
+        self.best_epoch  = checkpoint.get("best_epoch", checkpoint.get("epoch", 0))
+        self.patience_counter = checkpoint.get("patience_counter", 0)
+
+        # Charger l'historique si disponible
+        history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
+        if os.path.exists(history_path):
+            try:
+                with open(history_path, "r") as f:
+                    self.history = json.load(f)
+            except Exception:
+                pass
+
+        logger.info(
+            f"✅ Reprise réussie ! Reprise à l'epoch {self.start_epoch}/{self.max_epochs} "
+            f"(meilleur {self.es_monitor}={self.best_metric:.4f} à l'epoch {self.best_epoch})"
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     def train(self):
         """Boucle d'entraînement principale."""
-        console.rule(f"[bold blue]Début de l'entraînement : {self.run_name}")
+        if self.start_epoch > self.max_epochs:
+            console.print(
+                f"\n[bold green]✅ Entraînement déjà complété "
+                f"({self.start_epoch - 1}/{self.max_epochs} epochs effectuées).[/bold green]\n"
+            )
+            return
 
-        for epoch in range(1, self.max_epochs + 1):
+        console.rule(f"[bold blue]Début de l'entraînement : {self.run_name} (Epochs {self.start_epoch} -> {self.max_epochs})")
+
+        for epoch in range(self.start_epoch, self.max_epochs + 1):
             epoch_start = time.time()
 
             # ── Epoch d'entraînement ──────────────────────────────────────────
@@ -147,15 +212,32 @@ class Trainer:
             epoch_time = time.time() - epoch_start
             self._log_epoch(epoch, train_loss, val_loss, val_metrics, epoch_time)
 
-            # ── Checkpoint (sauvegarde si meilleur résultat) ──────────────────
+            # ── Enregistrement de l'historique ────────────────────────────────
+            epoch_record = {
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "epoch_time_sec": epoch_time,
+                "lr": self.optimizer.param_groups[0]["lr"],
+                **val_metrics,
+            }
+            self.history.append(epoch_record)
+            history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
+            with open(history_path, "w") as f:
+                json.dump(self.history, f, indent=2)
+
+            # ── Checkpoint : Toujours sauvegarder last_<run_name>.pth ─────────
+            self._save_checkpoint(epoch, val_metrics, is_best=False, is_last=True)
+
+            # ── Checkpoint : Sauvegarder si meilleur résultat ─────────────────
             monitor_value = val_metrics.get(self.es_monitor, 0.0)
             is_best = self._is_better(monitor_value)
 
             if is_best:
-                self._save_checkpoint(epoch, val_metrics, is_best=True)
                 self.best_metric = monitor_value
                 self.best_epoch  = epoch
                 self.patience_counter = 0
+                self._save_checkpoint(epoch, val_metrics, is_best=True)
             else:
                 self.patience_counter += 1
 
@@ -335,7 +417,7 @@ class Trainer:
         return current < self.best_metric
 
     def _save_checkpoint(
-        self, epoch: int, metrics: dict, is_best: bool = False
+        self, epoch: int, metrics: dict, is_best: bool = False, is_last: bool = False
     ):
         """Sauvegarde un checkpoint du modèle."""
         # Gérer le cas DataParallel (extraire le module réel)
@@ -346,19 +428,25 @@ class Trainer:
         )
 
         checkpoint = {
-            "epoch":          epoch,
-            "model_state":    model_state,
+            "epoch":           epoch,
+            "model_state":     model_state,
             "optimizer_state": self.optimizer.state_dict(),
-            "metrics":        metrics,
-            "best_metric":    self.best_metric,
-            "run_name":       self.run_name,
+            "scheduler_state": self.scheduler.state_dict() if self.scheduler is not None else None,
+            "scaler_state":    self.scaler.state_dict() if (self.use_amp and self.scaler is not None) else None,
+            "metrics":         metrics,
+            "best_metric":     self.best_metric,
+            "best_epoch":      self.best_epoch,
+            "patience_counter": self.patience_counter,
+            "run_name":        self.run_name,
         }
 
-        filename = (
-            f"best_{self.run_name}.pth"
-            if is_best
-            else f"{self.run_name}_epoch{epoch:03d}.pth"
-        )
+        if is_last:
+            filename = f"last_{self.run_name}.pth"
+        elif is_best:
+            filename = f"best_{self.run_name}.pth"
+        else:
+            filename = f"{self.run_name}_epoch{epoch:03d}.pth"
+
         path = os.path.join(self.save_dir, filename)
         torch.save(checkpoint, path)
 

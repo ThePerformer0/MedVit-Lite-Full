@@ -74,6 +74,7 @@ def main(args):
         image_size  = config["data"]["image_size"],
         batch_size  = config["training"]["batch_size"],  # par GPU
         num_workers = config["data"]["num_workers"],
+        dry_run     = args.dry_run,
     )
 
     # ── Modèle ────────────────────────────────────────────────────────────────
@@ -138,6 +139,8 @@ def main(args):
         save_dir     = config["logging"]["save_dir"],
         use_wandb    = config["logging"]["use_wandb"] and not args.no_wandb,
         run_name     = run_name,
+        dry_run      = args.dry_run,
+        resume       = args.resume,
     )
 
     trainer.train()
@@ -182,5 +185,9 @@ if __name__ == "__main__":
                         help="Ablation : désactiver Selective Frame Cache")
     parser.add_argument("--no-wandb", action="store_true",
                         help="Désactiver W&B logging")
+    parser.add_argument("--dry-run",  action="store_true",
+                        help="Exécuter un test rapide sur un sous-ensemble de données (2 epochs)")
+    parser.add_argument("--resume",   action="store_true",
+                        help="Reprendre l'entraînement depuis le dernier checkpoint")
     args = parser.parse_args()
     main(args)

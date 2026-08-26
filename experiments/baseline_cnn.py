@@ -104,6 +104,7 @@ def main(args):
         image_size  = config["data"]["image_size"],
         batch_size  = config["training"]["batch_size"],
         num_workers = config["data"]["num_workers"],
+        dry_run     = args.dry_run,
     )
 
     # ── Modèle ────────────────────────────────────────────────────────────────
@@ -141,6 +142,8 @@ def main(args):
         save_dir     = config["logging"]["save_dir"],
         use_wandb    = config["logging"]["use_wandb"] and not args.no_wandb,
         run_name     = "baseline_resnet50",
+        dry_run      = args.dry_run,
+        resume       = args.resume,
     )
 
     trainer.train()
@@ -168,6 +171,14 @@ def main(args):
     test_metrics = test_metrics_tracker.compute()
     logger.info("Résultats TEST SET (ResNet-50 baseline) :")
     logger.info(test_metrics_tracker.summary(test_metrics))
+
+    # Sauvegarder les résultats pour comparaison
+    results_dir = config["logging"].get("results_dir", "/kaggle/working/results")
+    os.makedirs(results_dir, exist_ok=True)
+    results_path = os.path.join(results_dir, "baseline_resnet50_test_results.yaml")
+    with open(results_path, "w") as f:
+        yaml.dump(test_metrics, f, default_flow_style=False)
+    logger.info(f"Résultats sauvegardés : {results_path}")
 
 
 if __name__ == "__main__":
