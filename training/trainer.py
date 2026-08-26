@@ -15,6 +15,7 @@ import os
 import time
 import gc
 import json
+import math
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -218,18 +219,38 @@ class Trainer:
             self._log_epoch(epoch, train_loss, val_loss, val_metrics, epoch_time)
 
             # ── Enregistrement de l'historique ────────────────────────────────
+            lr_val = self.optimizer.param_groups[0]["lr"]
+            if hasattr(lr_val, "item"):
+                lr_val = float(lr_val.item())
+            else:
+                lr_val = float(lr_val)
+
             epoch_record = {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "epoch_time_sec": epoch_time,
-                "lr": self.optimizer.param_groups[0]["lr"],
-                **val_metrics,
+                "epoch": int(epoch),
+                "train_loss": float(train_loss),
+                "val_loss": float(val_loss),
+                "epoch_time_sec": float(epoch_time),
+                "lr": lr_val,
             }
+            for k, v in val_metrics.items():
+                if hasattr(v, "item"):
+                    epoch_record[k] = float(v.item())
+                else:
+                    try:
+                        epoch_record[k] = float(v)
+                    except (ValueError, TypeError):
+                        epoch_record[k] = str(v)
+
             self.history.append(epoch_record)
             history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
-            with open(history_path, "w") as f:
-                json.dump(self.history, f, indent=2)
+            try:
+                with open(history_path, "w") as f:
+                    json.dump(
+                        self.history, f, indent=2,
+                        default=lambda x: float(x.item()) if hasattr(x, "item") else str(x)
+                    )
+            except Exception as e:
+                logger.warning(f"Impossible d'enregistrer l'historique JSON: {e}")
 
             # ── Checkpoint : Toujours sauvegarder last_<run_name>.pth ─────────
             self._save_checkpoint(epoch, val_metrics, is_best=False, is_last=True)
@@ -523,9 +544,9 @@ def build_scheduler(optimizer, config: dict, num_epochs: int):
 
         def lr_lambda(epoch):
             if epoch < warmup:
-                return epoch / max(1, warmup)  # Warmup linéaire
-            progress = (epoch - warmup) / max(1, num_epochs - warmup)
-            return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.14159)))
+                return float(epoch / max(1, warmup))  # Warmup linéaire
+            progress = float((epoch - warmup) / max(1, num_epochs - warmup))
+            return float(0.5 * (1.0 + math.cos(progress * math.pi)))
 
         return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
