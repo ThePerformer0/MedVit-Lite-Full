@@ -76,7 +76,8 @@ def print_comparison_table(results: dict):
 
     for exp_id, exp_name in EXPERIMENTS.items():
         if results[exp_id] is None:
-            print(f"{exp_name:<45}  {'N/A':>14}" * len(METRICS_TO_SHOW))
+            na_cells = "".join([f" {'N/A':>14}" for _ in METRICS_TO_SHOW])
+            print(f"{exp_name:<45}{na_cells}")
             continue
 
         row = f"{exp_name:<45}"
