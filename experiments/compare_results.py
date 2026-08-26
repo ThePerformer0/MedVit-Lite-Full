@@ -50,7 +50,14 @@ def load_results(results_dir: str) -> dict:
         path = os.path.join(results_dir, f"{exp_id}_test_results.yaml")
         if os.path.exists(path):
             with open(path, "r") as f:
-                results[exp_id] = yaml.safe_load(f)
+                try:
+                    results[exp_id] = yaml.safe_load(f)
+                except Exception:
+                    f.seek(0)
+                    try:
+                        results[exp_id] = yaml.load(f, Loader=yaml.FullLoader)
+                    except Exception:
+                        results[exp_id] = None
             print(f"  ✅ {exp_name}")
         else:
             print(f"  ❌ {exp_name} — résultats non trouvés ({path})")

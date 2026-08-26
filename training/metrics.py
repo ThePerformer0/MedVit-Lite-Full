@@ -346,7 +346,8 @@ class MetricsTracker:
         # Calibration
         metrics["ece"] = compute_ece(probs, targets)
 
-        return metrics
+        # Convertir toutes les valeurs en float standard Python (évite les erreurs de sérialisation PyYAML)
+        return {k: float(v) for k, v in metrics.items()}
 
     def summary(self, metrics: Dict[str, float]) -> str:
         """Résumé concis des métriques clés."""

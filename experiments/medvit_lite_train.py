@@ -171,8 +171,9 @@ def main(args):
     results_dir = config["logging"]["results_dir"]
     os.makedirs(results_dir, exist_ok=True)
     results_path = os.path.join(results_dir, f"{run_name}_test_results.yaml")
+    clean_metrics = {k: float(v) for k, v in test_metrics.items()}
     with open(results_path, "w") as f:
-        yaml.dump(test_metrics, f, default_flow_style=False)
+        yaml.dump(clean_metrics, f, default_flow_style=False)
     logger.info(f"Résultats sauvegardés : {results_path}")
 
 
