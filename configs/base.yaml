@@ -63,12 +63,12 @@ model:
 # ─── Training ───────────────────────────────────────────────
 training:
   epochs: 50
-  batch_size: 32                 # T4 16Go : 32 par GPU (×2 = 64 effectif)
-  gradient_accumulation: 2       # Simule batch_size=64 par GPU
+  batch_size: 128                # T4 16Go : 128 par GPU (pleine utilisation GPU)
+  gradient_accumulation: 1       # 1 pass par step (maximum de vitesse)
 
   optimizer:
     name: "adamw"
-    lr: 3.0e-4
+    lr: 5.0e-4
     weight_decay: 0.05
     betas: [0.9, 0.999]
 
