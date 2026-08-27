@@ -155,6 +155,7 @@ def main(args):
     model.eval()
     model.reset_cache()
 
+    test_tracker = MetricsTracker(threshold=0.5, pathology_names=PATHOLOGY_NAMES)
     image_size = config["data"].get("image_size", 224)
     with torch.no_grad():
         for images, labels in test_loader:
