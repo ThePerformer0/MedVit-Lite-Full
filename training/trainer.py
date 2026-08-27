@@ -295,68 +295,60 @@ class Trainer:
     def _train_epoch(self, epoch: int) -> float:
         """Une epoch d'entraînement."""
         self.model.train()
-        self.metrics.reset()
-
         total_loss = 0.0
         n_batches  = len(self.train_loader)
+        log_interval = max(1, n_batches // 5)  # Log ~5 fois par epoch
 
-        with Progress(
-            "[progress.description]{task.description}",
-            BarColumn(), MofNCompleteColumn(), TimeElapsedColumn(),
-            console=console, transient=True,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Epoch {epoch}/{self.max_epochs} — Train",
-                total=n_batches
-            )
+        for step, (images, labels) in enumerate(self.train_loader):
+            images = images.to(self.device, non_blocking=True)
+            labels = labels.to(self.device, non_blocking=True)
 
-            for step, (images, labels) in enumerate(self.train_loader):
-                images = images.to(self.device, non_blocking=True)
-                labels = labels.to(self.device, non_blocking=True)
+            # ── Forward avec AMP ──────────────────────────────────────────
+            with autocast("cuda", enabled=self.use_amp):
+                logits = self.model(images)
+                loss   = self.loss_fn(logits, labels)
+                loss   = loss / self.grad_accum
 
-                # ── Forward avec AMP ──────────────────────────────────────────
-                with autocast("cuda", enabled=self.use_amp):
-                    logits = self.model(images)
-                    loss   = self.loss_fn(logits, labels)
-                    loss   = loss / self.grad_accum
+            # ── Backward ──────────────────────────────────────────────────
+            if self.use_amp:
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
-                # ── Backward ──────────────────────────────────────────────────
+            # ── Gradient accumulation ─────────────────────────────────────
+            if (step + 1) % self.grad_accum == 0:
                 if self.use_amp:
-                    self.scaler.scale(loss).backward()
+                    self.scaler.unscale_(self.optimizer)
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                 else:
-                    loss.backward()
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.optimizer.step()
 
-                # ── Gradient accumulation ─────────────────────────────────────
-                if (step + 1) % self.grad_accum == 0:
-                    if self.use_amp:
-                        # Clipping avant unscale
-                        self.scaler.unscale_(self.optimizer)
-                        nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                        self.optimizer.step()
+                self.optimizer.zero_grad()
 
-                    self.optimizer.zero_grad()
+            total_loss += loss.item() * self.grad_accum
 
-                # ── Métriques ─────────────────────────────────────────────────
-                total_loss += loss.item() * self.grad_accum
+            # ── W&B et step log léger ─────────────────────────────────────
+            if (step + 1) % log_interval == 0 or (step + 1) == n_batches:
+                pct = 100.0 * (step + 1) / n_batches
+                logger.info(
+                    f"  [Epoch {epoch:2d}/{self.max_epochs}] Train: {step+1:4d}/{n_batches:4d} "
+                    f"({pct:5.1f}%) | batch_loss={(loss.item() * self.grad_accum):.4f}"
+                )
 
-                # ── W&B step log ──────────────────────────────────────────────
-                if self.use_wandb and step % self.log_every == 0:
-                    self.wandb.log({
-                        "train/step_loss": loss.item() * self.grad_accum,
-                        "train/lr": self.optimizer.param_groups[0]["lr"],
-                    })
+            if self.use_wandb and (step + 1) % self.log_every == 0:
+                self.wandb.log({
+                    "train/step_loss": loss.item() * self.grad_accum,
+                    "train/lr": self.optimizer.param_groups[0]["lr"],
+                })
 
-                progress.advance(task)
-
-            # Nettoyage mémoire de fin d'epoch
-            del images, labels, logits, loss
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
-            gc.collect()
+        # Nettoyage mémoire de fin d'epoch
+        del images, labels, logits, loss
+        if self.device.type == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
 
         avg_loss = total_loss / n_batches
         return avg_loss
@@ -371,33 +363,22 @@ class Trainer:
         n_batches  = len(self.val_loader)
 
         with torch.no_grad():
-            with Progress(
-                "[progress.description]{task.description}",
-                BarColumn(), MofNCompleteColumn(), TimeElapsedColumn(),
-                console=console, transient=True,
-            ) as progress:
-                task = progress.add_task(
-                    f"[magenta]Epoch {epoch}/{self.max_epochs} — Val  ",
-                    total=n_batches
-                )
+            for images, labels in self.val_loader:
+                images = images.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
 
-                for images, labels in self.val_loader:
-                    images = images.to(self.device, non_blocking=True)
-                    labels = labels.to(self.device, non_blocking=True)
+                with autocast("cuda", enabled=self.use_amp):
+                    logits = self.model(images)
+                    loss   = self.loss_fn(logits, labels)
 
-                    with autocast("cuda", enabled=self.use_amp):
-                        logits = self.model(images)
-                        loss   = self.loss_fn(logits, labels)
+                total_loss += loss.item()
+                self.metrics.update(logits, labels)
 
-                    total_loss += loss.item()
-                    self.metrics.update(logits, labels)
-                    progress.advance(task)
-
-                # Nettoyage mémoire de fin d'epoch
-                del images, labels, logits, loss
-                if self.device.type == "cuda":
-                    torch.cuda.empty_cache()
-                gc.collect()
+            # Nettoyage mémoire de fin d'epoch
+            del images, labels, logits, loss
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+            gc.collect()
 
         val_metrics = self.metrics.compute()
         self.metrics.reset()
