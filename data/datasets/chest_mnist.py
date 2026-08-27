@@ -189,12 +189,15 @@ def build_dataloaders(
         val_dataset = val_subset
         test_dataset = test_subset
 
+    persistent = (num_workers > 0)
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,          # mélanger à chaque epoch
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
         drop_last=False if dry_run else True, # ne pas perdre de batch en dry-run
     )
 
@@ -204,6 +207,7 @@ def build_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
     )
 
     test_loader = DataLoader(
@@ -212,6 +216,7 @@ def build_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
     )
 
     logger.info(

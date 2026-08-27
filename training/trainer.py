@@ -342,7 +342,6 @@ class Trainer:
 
                 # ── Métriques ─────────────────────────────────────────────────
                 total_loss += loss.item() * self.grad_accum
-                self.metrics.update(logits.detach(), labels.detach())
 
                 # ── W&B step log ──────────────────────────────────────────────
                 if self.use_wandb and step % self.log_every == 0:
@@ -355,6 +354,8 @@ class Trainer:
 
             # Nettoyage mémoire de fin d'epoch
             del images, labels, logits, loss
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
             gc.collect()
 
         avg_loss = total_loss / n_batches
@@ -394,9 +395,12 @@ class Trainer:
 
                 # Nettoyage mémoire de fin d'epoch
                 del images, labels, logits, loss
+                if self.device.type == "cuda":
+                    torch.cuda.empty_cache()
                 gc.collect()
 
         val_metrics = self.metrics.compute()
+        self.metrics.reset()
         val_metrics["val_loss"] = total_loss / n_batches
 
         # Préfixer les métriques avec "val_"
