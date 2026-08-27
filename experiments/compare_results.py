@@ -193,6 +193,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results-dir", type=str, default="./results")
+    default_dir = "/kaggle/working/results" if os.path.exists("/kaggle/working/results") else "./results"
+    parser.add_argument("--results-dir", type=str, default=default_dir)
     args = parser.parse_args()
     main(args)
