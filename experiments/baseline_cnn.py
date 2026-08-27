@@ -161,9 +161,12 @@ def main(args):
         threshold=0.5, pathology_names=PATHOLOGY_NAMES
     )
 
+    image_size = config["data"].get("image_size", 224)
     with torch.no_grad():
         for images, labels in test_loader:
-            images = images.to(device)
+            images = Trainer.preprocess_batch(
+                images, device=device, image_size=image_size, is_train=False
+            )
             labels = labels.to(device)
             logits = model(images)
             test_metrics_tracker.update(logits, labels)

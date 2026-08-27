@@ -66,65 +66,34 @@ class ChestMNISTDataset(Dataset):
         self.split = split
         self.image_size = image_size
 
-        # ── Transformations ──────────────────────────────────────────────────
-        if split == "train":
-            self.transform = transforms.Compose([
-                transforms.Resize((image_size, image_size)),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=15),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2),
-                # Conversion grayscale → RGB (répéter le canal 3 fois)
-                transforms.Grayscale(num_output_channels=3),
-                transforms.ToTensor(),
-                # Normalisation ImageNet (même si images médicales, c'est standard)
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                ),
-            ])
-        else:
-            # Pas d'augmentation pour val/test
-            self.transform = transforms.Compose([
-                transforms.Resize((image_size, image_size)),
-                transforms.Grayscale(num_output_channels=3),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                ),
-            ])
-
         # ── Chargement du dataset ────────────────────────────────────────────
         logger.info(f"Chargement ChestMNIST [{split}]...")
         import os
         os.makedirs(root, exist_ok=True)   # garantit que le dossier existe
-        self.dataset = MedMNISTChest(
+        raw_dataset = MedMNISTChest(
             split=split,
-            transform=self.transform,
+            transform=None,
             download=download,
             root=root,
-            # size=image_size : non supporté (valeurs valides : 28, 64, 128)
-            # Le resize à 224 est déjà géré par transforms.Resize ci-dessus
-            as_rgb=True,
+            as_rgb=False,
         )
 
-        # Les labels sont de forme (N, 14) — multi-label binaire
-        self.labels = self.dataset.labels  # shape: (N, 14)
+        # Stocker en tenseurs uint8 compacts (61 Mo total pour tout le train set !)
+        # Zéro allocation PIL, zéro fuite mémoire CPU
+        self.imgs = torch.from_numpy(raw_dataset.imgs) # shape: (N, 28, 28) uint8
+        self.labels = raw_dataset.labels               # shape: (N, 14) numpy
+        self.targets = torch.from_numpy(raw_dataset.labels).float() # shape: (N, 14)
+
         logger.info(
-            f"  → {len(self.dataset)} images chargées "
+            f"  → {len(self.imgs)} images chargées en mémoire RAM compacte (uint8) "
             f"({self.labels.sum(axis=0).astype(int)} positifs par classe)"
         )
 
     def __len__(self) -> int:
-        return len(self.dataset)
+        return len(self.imgs)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        image, label = self.dataset[idx]
-
-        # Convertir label en float tensor (pour BCEWithLogitsLoss)
-        label = torch.tensor(label, dtype=torch.float32).squeeze()
-
-        return image, label
+        return self.imgs[idx], self.targets[idx]
 
     def get_class_weights(self) -> torch.Tensor:
         """
