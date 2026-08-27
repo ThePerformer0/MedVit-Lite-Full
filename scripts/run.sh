@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -eo pipefail   # -e = stop on error, -o pipefail = catch errors through pipes
+export MALLOC_TRIM_THRESHOLD_=65536
 
 SESSION1=false
 SESSION2=false

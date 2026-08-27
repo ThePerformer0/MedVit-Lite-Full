@@ -16,6 +16,7 @@ import time
 import gc
 import json
 import math
+import ctypes
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -27,6 +28,15 @@ from rich.progress import Progress, BarColumn, TimeElapsedColumn, MofNCompleteCo
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+def trim_memory():
+    """Force libc (glibc) à libérer immédiatement les pages mémoire tas inutilisées."""
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+    except Exception:
+        pass
 
 
 class Trainer:
@@ -123,6 +133,10 @@ class Trainer:
             default_ckpt = os.path.join(save_dir, f"last_{run_name}.pth")
             if os.path.exists(default_ckpt):
                 target_resume = default_ckpt
+            else:
+                best_ckpt = os.path.join(save_dir, f"best_{run_name}.pth")
+                if os.path.exists(best_ckpt):
+                    target_resume = best_ckpt
 
         if target_resume and os.path.exists(target_resume):
             self._load_resume_checkpoint(target_resume)
@@ -152,60 +166,65 @@ class Trainer:
         )
 
     def _load_resume_checkpoint(self, checkpoint_path: str):
-        """Charge l'état complet d'entraînement pour reprise avec fallback automatique."""
-        candidates = [checkpoint_path]
-        best_fallback = os.path.join(self.save_dir, f"best_{self.run_name}.pth")
-        if best_fallback not in candidates and os.path.exists(best_fallback):
-            candidates.append(best_fallback)
+        """Charge l'état complet d'entraînement pour reprise avec repli automatique."""
+        logger.info(f"🔄 Tentative de reprise depuis : {checkpoint_path}")
+        checkpoint = None
+        candidate_paths = [checkpoint_path, os.path.join(self.save_dir, f"best_{self.run_name}.pth")]
 
-        loaded = False
-        for path in candidates:
+        for path in candidate_paths:
             if not os.path.exists(path):
                 continue
-            logger.info(f"🔄 Tentative de reprise depuis : {path}")
             try:
                 try:
                     checkpoint = torch.load(path, map_location=self.device, weights_only=False)
                 except TypeError:
                     checkpoint = torch.load(path, map_location=self.device)
-
-                raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
-                raw_model.load_state_dict(checkpoint["model_state"])
-
-                if "optimizer_state" in checkpoint and checkpoint["optimizer_state"] is not None:
-                    self.optimizer.load_state_dict(checkpoint["optimizer_state"])
-                if "scheduler_state" in checkpoint and checkpoint["scheduler_state"] is not None and self.scheduler is not None:
-                    self.scheduler.load_state_dict(checkpoint["scheduler_state"])
-                if "scaler_state" in checkpoint and checkpoint["scaler_state"] is not None and self.scaler is not None:
-                    self.scaler.load_state_dict(checkpoint["scaler_state"])
-
-                self.start_epoch = checkpoint.get("epoch", 0) + 1
-                self.best_metric = checkpoint.get("best_metric", self.best_metric)
-                self.best_epoch  = checkpoint.get("best_epoch", checkpoint.get("epoch", 0))
-                self.patience_counter = checkpoint.get("patience_counter", 0)
-
-                # Charger l'historique si disponible
-                history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
-                if os.path.exists(history_path):
-                    try:
-                        with open(history_path, "r") as f:
-                            self.history = json.load(f)
-                    except Exception:
-                        pass
-
-                logger.info(
-                    f"✅ Reprise réussie depuis {os.path.basename(path)} ! "
-                    f"Reprise à l'epoch {self.start_epoch}/{self.max_epochs} "
-                    f"(meilleur {self.es_monitor}={self.best_metric:.4f} à l'epoch {self.best_epoch})"
-                )
-                loaded = True
+                logger.info(f"✅ Checkpoint valide chargé depuis : {path}")
                 break
             except Exception as e:
-                logger.warning(f"⚠️ Échec du chargement de {path} ({e}). Essai du candidat suivant...")
+                logger.warning(f"⚠️ Impossible de charger {path} ({e})")
 
-        if not loaded:
-            logger.warning("⚠️ Aucun checkpoint valide n'a pu être chargé. Démarrage depuis l'epoch 1.")
-            self.start_epoch = 1
+        if checkpoint is None:
+            logger.warning("⚠️ Aucun checkpoint exploitable trouvé. Démarrage d'un entraînement complet.")
+            return
+
+        raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        raw_model.load_state_dict(checkpoint["model_state"])
+
+        if "optimizer_state" in checkpoint and checkpoint["optimizer_state"] is not None:
+            try:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+            except Exception:
+                pass
+        if "scheduler_state" in checkpoint and checkpoint["scheduler_state"] is not None and self.scheduler is not None:
+            try:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+            except Exception:
+                pass
+        if "scaler_state" in checkpoint and checkpoint["scaler_state"] is not None and self.scaler is not None:
+            try:
+                self.scaler.load_state_dict(checkpoint["scaler_state"])
+            except Exception:
+                pass
+
+        self.start_epoch = checkpoint.get("epoch", 0) + 1
+        self.best_metric = checkpoint.get("best_metric", self.best_metric)
+        self.best_epoch  = checkpoint.get("best_epoch", checkpoint.get("epoch", 0))
+        self.patience_counter = checkpoint.get("patience_counter", 0)
+
+        # Charger l'historique si disponible
+        history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
+        if os.path.exists(history_path):
+            try:
+                with open(history_path, "r") as f:
+                    self.history = json.load(f)
+            except Exception:
+                pass
+
+        logger.info(
+            f"✅ Reprise réussie ! Reprise à l'epoch {self.start_epoch}/{self.max_epochs} "
+            f"(meilleur {self.es_monitor}={self.best_metric:.4f} à l'epoch {self.best_epoch})"
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     def train(self):
@@ -293,6 +312,12 @@ class Trainer:
             if epoch % 5 == 0:
                 self._save_checkpoint(epoch, val_metrics, is_best=False)
 
+            # Nettoyage mémoire renforcé (VRAM + RAM C-heap)
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+            gc.collect()
+            trim_memory()
+
             # ── Early Stopping ────────────────────────────────────────────────
             if self.patience_counter >= self.es_patience:
                 console.print(
@@ -368,6 +393,7 @@ class Trainer:
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
         gc.collect()
+        trim_memory()
 
         avg_loss = total_loss / n_batches
         return avg_loss
@@ -398,6 +424,7 @@ class Trainer:
             if self.device.type == "cuda":
                 torch.cuda.empty_cache()
             gc.collect()
+            trim_memory()
 
         val_metrics = self.metrics.compute()
         self.metrics.reset()
@@ -427,7 +454,9 @@ class Trainer:
         console.print(
             f"[bold]Epoch {epoch:3d}[/bold] | "
             f"loss train={train_loss:.4f} val={val_loss:.4f} | "
-            f"AUC={auc:.4f}  Sens@95={sens:.4f}  F1={f1:.4f} | "
+            f"[green]AUC={auc:.4f}[/green]  "
+            f"Sens@95={sens:.4f}  "
+            f"F1={f1:.4f} | "
             f"lr={lr:.2e}  [{epoch_time:.1f}s]"
         )
 
