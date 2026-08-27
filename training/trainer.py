@@ -152,41 +152,60 @@ class Trainer:
         )
 
     def _load_resume_checkpoint(self, checkpoint_path: str):
-        """Charge l'état complet d'entraînement pour reprise."""
-        logger.info(f"🔄 Tentative de reprise depuis : {checkpoint_path}")
-        try:
-            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
-        except TypeError:
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        """Charge l'état complet d'entraînement pour reprise avec fallback automatique."""
+        candidates = [checkpoint_path]
+        best_fallback = os.path.join(self.save_dir, f"best_{self.run_name}.pth")
+        if best_fallback not in candidates and os.path.exists(best_fallback):
+            candidates.append(best_fallback)
 
-        raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
-        raw_model.load_state_dict(checkpoint["model_state"])
-
-        if "optimizer_state" in checkpoint and checkpoint["optimizer_state"] is not None:
-            self.optimizer.load_state_dict(checkpoint["optimizer_state"])
-        if "scheduler_state" in checkpoint and checkpoint["scheduler_state"] is not None and self.scheduler is not None:
-            self.scheduler.load_state_dict(checkpoint["scheduler_state"])
-        if "scaler_state" in checkpoint and checkpoint["scaler_state"] is not None and self.scaler is not None:
-            self.scaler.load_state_dict(checkpoint["scaler_state"])
-
-        self.start_epoch = checkpoint.get("epoch", 0) + 1
-        self.best_metric = checkpoint.get("best_metric", self.best_metric)
-        self.best_epoch  = checkpoint.get("best_epoch", checkpoint.get("epoch", 0))
-        self.patience_counter = checkpoint.get("patience_counter", 0)
-
-        # Charger l'historique si disponible
-        history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
-        if os.path.exists(history_path):
+        loaded = False
+        for path in candidates:
+            if not os.path.exists(path):
+                continue
+            logger.info(f"🔄 Tentative de reprise depuis : {path}")
             try:
-                with open(history_path, "r") as f:
-                    self.history = json.load(f)
-            except Exception:
-                pass
+                try:
+                    checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+                except TypeError:
+                    checkpoint = torch.load(path, map_location=self.device)
 
-        logger.info(
-            f"✅ Reprise réussie ! Reprise à l'epoch {self.start_epoch}/{self.max_epochs} "
-            f"(meilleur {self.es_monitor}={self.best_metric:.4f} à l'epoch {self.best_epoch})"
-        )
+                raw_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+                raw_model.load_state_dict(checkpoint["model_state"])
+
+                if "optimizer_state" in checkpoint and checkpoint["optimizer_state"] is not None:
+                    self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+                if "scheduler_state" in checkpoint and checkpoint["scheduler_state"] is not None and self.scheduler is not None:
+                    self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+                if "scaler_state" in checkpoint and checkpoint["scaler_state"] is not None and self.scaler is not None:
+                    self.scaler.load_state_dict(checkpoint["scaler_state"])
+
+                self.start_epoch = checkpoint.get("epoch", 0) + 1
+                self.best_metric = checkpoint.get("best_metric", self.best_metric)
+                self.best_epoch  = checkpoint.get("best_epoch", checkpoint.get("epoch", 0))
+                self.patience_counter = checkpoint.get("patience_counter", 0)
+
+                # Charger l'historique si disponible
+                history_path = os.path.join(self.save_dir, f"{self.run_name}_history.json")
+                if os.path.exists(history_path):
+                    try:
+                        with open(history_path, "r") as f:
+                            self.history = json.load(f)
+                    except Exception:
+                        pass
+
+                logger.info(
+                    f"✅ Reprise réussie depuis {os.path.basename(path)} ! "
+                    f"Reprise à l'epoch {self.start_epoch}/{self.max_epochs} "
+                    f"(meilleur {self.es_monitor}={self.best_metric:.4f} à l'epoch {self.best_epoch})"
+                )
+                loaded = True
+                break
+            except Exception as e:
+                logger.warning(f"⚠️ Échec du chargement de {path} ({e}). Essai du candidat suivant...")
+
+        if not loaded:
+            logger.warning("⚠️ Aucun checkpoint valide n'a pu être chargé. Démarrage depuis l'epoch 1.")
+            self.start_epoch = 1
 
     # ─────────────────────────────────────────────────────────────────────────
     def train(self):
@@ -462,7 +481,9 @@ class Trainer:
             filename = f"{self.run_name}_epoch{epoch:03d}.pth"
 
         path = os.path.join(self.save_dir, filename)
-        torch.save(checkpoint, path)
+        tmp_path = path + ".tmp"
+        torch.save(checkpoint, tmp_path)
+        os.replace(tmp_path, path)
 
         if is_best:
             logger.info(
