@@ -55,6 +55,8 @@ Evaluated on the **ChestMNIST** benchmark (112,120 chest X-rays, 14 thoracic pat
 
 *\*Note on F1: Measuring F1 at a fixed hard threshold of 0.5 significantly underestimates real performance on an extreme multi-label imbalanced dataset (class prevalences as low as 0.18%); macro AUC-ROC remains the standard benchmark metric.*
 
+![Comparaison AUC](results/auc_comparison.png)
+
 ### 🔍 What these numbers actually say:
 - **Raw discrimination gap:** MedViT-Lite performs better than random chance (AUC 0.617 > 0.50), but **remains behind the pretrained CNN baseline in raw diagnostic power**. This is completely consistent with deep learning literature: Vision Transformers lack the hard local inductive bias of CNNs and typically require large-scale pretraining on millions of images to form robust spatial representations, whereas CNNs generalize much better from small data. I have not yet been able to run large-scale pretraining due to limited compute resources.
 - **Model footprint & calibration:** On the other hand, MedViT-Lite achieves a **lower probabilistic calibration error (ECE)** with **52.7% fewer parameters**—a compact footprint that is encouraging for edge devices, even though it does not yet bridge the raw accuracy gap.

@@ -72,6 +72,8 @@ Multi-Label Predictions (14 Pathologies) + Predictive Confidence Intervals
 
 *\*F1 is measured at a fixed 0.5 threshold, which is sub-optimal under severe class imbalance.*
 
+![Comparaison AUC](../results/auc_comparison.png)
+
 ### 4.2 Per-Pathology Diagnostic Breakdown (AUC-ROC)
 
 | Pathology | ResNet-50 (Pretrained) | MedViT-Lite (From Scratch) | Observation |
