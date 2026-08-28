@@ -2,6 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C.svg)](https://pytorch.org/)
+[![Trained on Kaggle](https://img.shields.io/badge/Trained%20on-Kaggle%20T4%20x2-20BEFF.svg?style=flat&logo=kaggle)](https://www.kaggle.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A lightweight hierarchical Vision Transformer, designed and trained **from scratch**, for multi-pathology screening on chest X-rays in resource-constrained environments.
@@ -120,6 +121,12 @@ MedVit-Lite-Full/
 ├── paper/report.md        # Technical benchmark report
 └── notebooks/             # Interactive demo notebook
 ```
+
+---
+
+## 🏷️ Topics
+
+`deep-learning` • `vision-transformer` • `pytorch` • `kaggle` • `medical-imaging` • `chestmnist` • `edge-ai` • `explainable-ai` • `grad-cam` • `sparse-attention`
 
 ---
 
