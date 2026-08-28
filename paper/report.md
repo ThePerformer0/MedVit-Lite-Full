@@ -1,157 +1,126 @@
-# MedViT-Lite: A Hierarchical Adaptive Vision Transformer for Resource-Constrained Medical Image Diagnosis
+# MedViT-Lite: A Lightweight Hierarchical Vision Transformer for Chest Pathology Screening
 
-**Technical & Empirical Benchmark Report**  
-*Project Repository: [ThePerformer0/MedVit-Lite-Full](https://github.com/ThePerformer0/MedVit-Lite-Full)*
-
----
-
-## 1. Abstract
-
-In resource-constrained and rural healthcare environments, access to expert radiological interpretation is severely bottlenecked. While standard Deep Learning vision architectures such as ResNet-50 have achieved high diagnostic sensitivity, their compute footprint, high parameter count (24.0M parameters), and poor probabilistic calibration limit their safe deployment on low-power edge hardware.
-
-We introduce **MedViT-Lite**, a lightweight Hierarchical Adaptive Vision Transformer specifically engineered for resource-constrained multi-label chest pathology screening. MedViT-Lite integrates three core architectural innovations:
-1. **Dynamic Patch Sparsifier (DPS)**: Prunes 50% of non-informative background anatomical patches, cutting quadratic attention complexity by $4\times$.
-2. **Selective Frame Cache (SFC)**: Caches stationary anatomical representations to accelerate streaming image sequences.
-3. **Hierarchical Temporal Attention (HTA)**: Combines local intra-frame windowed self-attention with global cross-attention tokens.
-4. **Epistemic Uncertainty Estimation**: Employs Monte Carlo Dropout to provide calibrated confidence bounds for human-in-the-loop referral.
-
-Evaluated on the **ChestMNIST** benchmark (112,120 chest X-ray images, 14 pathological classes), MedViT-Lite achieves a parameter reduction of **52.7%** (11.36M vs. 24.0M parameters) while demonstrating an **Expected Calibration Error (ECE) of 0.0078**—a **37.1% improvement in calibration safety** over ResNet-50 (ECE = 0.0124).
+**Technical Study & Benchmark Report**  
+*Author:* [Feke Jimmy Wilson](https://github.com/ThePerformer0) *(Master 2 Computer Engineering, ENSPY)*  
+*Repository:* [ThePerformer0/MedVit-Lite-Full](https://github.com/ThePerformer0/MedVit-Lite-Full)  
+*Date:* August 2026
 
 ---
 
-## 2. Architectural Design & Innovations
+## 1. Project Context & Motivation
 
-```
-                       Input Chest X-Ray (224×224)
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │   CNN Patch Embedding (384d, 196 patches) │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Dynamic Patch Sparsifier (DPS)           │
-             │  • Learnable Gumbel-Softmax Scoring       │  ◄── Innovation 1
-             │  • 196 patches ──► Top 98 Patches (50%)   │      (4x FLOP reduction)
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Selective Frame Cache (SFC)              │  ◄── Innovation 2
-             │  • Cosine similarity threshold (0.92)     │      (Streaming reuse)
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Hierarchical Temporal Attention (HTA)    │  ◄── Innovation 3
-             │  • 4 Local Window Blocks (Window Size 7)  │
-             │  • 2 Global Aggregation Blocks            │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Classification Head + MC Dropout (10x)   │  ◄── Safety & Uncertainty
-             │  • 14 Multi-Label Pathologies             │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                       Predictions & Saliency Maps
+In resource-constrained healthcare environments (such as rural clinics and primary care dispensaries), access to expert radiologists is often severely limited. While Deep Learning models—notably deep Convolutional Neural Networks (CNNs) like ResNet-50—have shown strong diagnostic capabilities, they present two key deployment challenges:
+1. **Computational & Memory Footprint:** Standard architectures demand substantial memory and compute bandwidth, limiting real-time inference on low-power edge hardware.
+2. **Probabilistic Reliability:** Deep networks frequently produce overconfident probability estimates, which can be hazardous in clinical triage scenarios.
+
+**MedViT-Lite** is an exploratory, personal research project developed to investigate whether a compact, hierarchical Vision Transformer (ViT) designed from scratch could serve as an efficient, well-calibrated diagnostic backbone under strict computational constraints.
+
+> **Note on Scope:** This work is an exploratory academic investigation developed on free-tier cloud GPUs (Kaggle Tesla T4). It is intended to study architectural trade-offs, identify structural challenges, and provide an honest experimental baseline for future improvements.
+
+---
+
+## 2. Architecture & Design
+
+```text
+Chest X-Ray (224×224)
+        │
+        ▼
+CNN Patch Embedding (384d, 196 patches)
+        │
+        ▼
+Dynamic Patch Sparsifier (DPS)        ← prunes 50% non-informative background patches
+        │                                (Gumbel-Softmax scoring, ~4x attention FLOP reduction)
+        ▼
+Selective Frame Cache (SFC)           ← caches stationary feature representations
+        │                                (designed for streaming / sequential image capture)
+        ▼
+Hierarchical Temporal Attention (HTA) ← 4 local window blocks (7×7) + 2 global aggregation blocks
+        │
+        ▼
+Classification Head + MC Dropout (10 passes)  ← epistemic uncertainty estimation
+        │
+        ▼
+Multi-Label Predictions (14 Pathologies) + Predictive Confidence Intervals
 ```
 
-### 2.1 Dynamic Patch Sparsification (DPS)
-Standard Vision Transformers compute self-attention across all $N$ tokens with $\mathcal{O}(N^2)$ complexity. In medical imaging, large portions of X-rays comprise non-diagnostic background or peripheral anatomy. DPS applies a lightweight MLP scorer to rank token importance and selects the top $K = \lfloor \text{keep\_ratio} \times N \rfloor$ tokens ($K = 98$ for $N = 196$), significantly accelerating attention computation without information loss.
-
-### 2.2 Hierarchical Attention (HTA)
-Local blocks constrain attention to $7 \times 7$ localized windows to capture fine anatomical lesion textures (e.g., nodules, infiltrations), while global blocks aggregate inter-window context through global summary tokens.
-
-### 2.3 Epistemic Uncertainty via Monte Carlo Dropout
-Safety in clinical AI requires models to "know what they do not know." The classification head incorporates Monte Carlo Dropout ($p = 0.30$) sampled $T = 10$ times during inference, computing predictive variance $\sigma_c^2$ for each pathology.
+### 2.1 Proposed Modules
+1. **CNN Patch Embedding:** Projects $224 \times 224$ images into 196 tokens of dimension 384.
+2. **Dynamic Patch Sparsifier (DPS):** Uses a lightweight MLP scorer to rank patch saliency and prunes the bottom 50% background tokens, cutting self-attention quadratic complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}((N/2)^2)$.
+3. **Selective Frame Cache (SFC):** Compares consecutive frame representations via cosine similarity (threshold 0.92) to reuse stationary features.
+4. **Hierarchical Attention (HTA):** Combines windowed intra-frame attention with cross-window summary tokens.
+5. **Monte Carlo Dropout (Uncertainty):** Samples 10 forward passes at inference to estimate predictive variance ($\sigma^2$).
 
 ---
 
-## 3. Experimental Protocol & Benchmark Results
+## 3. Experimental Protocol
 
-### 3.1 Experimental Setup
-- **Dataset**: ChestMNIST (78,468 train, 11,219 validation, 22,433 test images).
-- **Task**: Multi-label classification across 14 radiological findings.
-- **Hardware**: Dual NVIDIA Tesla T4 GPUs (16 GB VRAM each).
-- **Optimization**: AdamW ($\beta_1=0.9, \beta_2=0.999$, weight decay 0.05), Cosine Warmup learning rate schedule ($5\times 10^{-4}$ peak), Weighted BCE Loss with class frequency inverse balancing.
-
-### 3.2 Global Test Set Benchmark Comparison
-
-| Model Architecture | Parameters | AUC-ROC (Macro Mean) | Sens @ Spec 95% | F1-Score (Macro) | Avg Precision (AP) | ECE (Calibration ↓) |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **ResNet-50 (CNN baseline, Pretrained)** | 24.0M | **0.7678** | **0.2732** | **0.0587** | **0.1631** | 0.0124 |
-| **MedViT-Lite (Ours, From Scratch)** | **11.36M** | **0.6174** | **0.1033** | 0.0000 | 0.0772 | **0.0078** |
+- **Dataset:** ChestMNIST (112,120 chest X-rays, 14 multi-label thoracic pathologies: 78,468 train, 11,219 val, 22,433 test).
+- **Baseline:** ResNet-50 pretrained on ImageNet-1k (standard reference in medical imaging literature).
+- **Optimization:** AdamW ($\text{lr}=5\times 10^{-4}$, weight decay 0.05, 5 warmup epochs, Cosine Annealing schedule), Weighted BCE Loss.
+- **Hardware:** 2× NVIDIA Tesla T4 GPUs (Kaggle environment, mixed precision AMP fp16).
 
 ---
 
-### 3.3 Per-Pathology Diagnostic Performance (AUC-ROC Breakdown)
+## 4. Benchmark Results & Honest Analysis
 
-| Pathology | ResNet-50 Baseline (Pretrained) | MedViT-Lite (Ours, From Scratch) | Clinical Observation |
+### 4.1 Test Set Evaluation (22,433 Test Scans)
+
+| Architecture | Parameters | Macro AUC-ROC | Macro F1-Score | Expected Calibration Error (ECE ↓) |
+|:---|:---:|:---:|:---:|:---:|
+| **ResNet-50 (CNN baseline, Pretrained)** | 24.0 M | **0.7678** | **0.0587** | 0.0124 |
+| **MedViT-Lite (Ours, Trained from Scratch)** | **11.36 M** *(−52.7%)* | 0.6174 | 0.0000* | **0.0078** *(−37.1%)* |
+
+*\*F1 is measured at a fixed 0.5 threshold, which is sub-optimal under severe class imbalance.*
+
+### 4.2 Per-Pathology Diagnostic Breakdown (AUC-ROC)
+
+| Pathology | ResNet-50 (Pretrained) | MedViT-Lite (From Scratch) | Observation |
 |:---|:---:|:---:|:---|
-| **Edema** | **0.8836** | **0.7967** | High localized contrast, strong ViT attention |
-| **Cardiomegaly** | **0.8774** | **0.6954** | Large global silhouette finding |
-| **Effusion** | **0.8353** | **0.6775** | Pleural space blunting well identified |
-| **Pneumothorax** | **0.8132** | **0.5779** | Fine visceral pleural line edge detection |
+| **Edema** | **0.8836** | **0.7967** | Strongest ViT detection (high contrast fluid opacity) |
+| **Cardiomegaly** | **0.8774** | **0.6954** | Global cardiac silhouette enlargement |
+| **Effusion** | **0.8353** | **0.6775** | Costophrenic angle blunting |
+| **Consolidation** | **0.7825** | **0.6895** | Dense alveolar opacification |
 | **Hernia** | **0.8101** | **0.6668** | Rare structural anomaly |
-| **Consolidation** | **0.7825** | **0.6895** | Dense alveolar opacity |
+| **Pneumonia** | **0.7266** | **0.6403** | Patchy parenchymal infiltrate |
+| **Fibrosis** | **0.7184** | **0.6278** | Reticular lung markings |
+| **Atelectasis** | **0.7643** | **0.6245** | Volume loss and collapse |
+| **Infiltration** | **0.6634** | **0.5971** | Ill-defined density |
+| **Pleural Thickening** | **0.7508** | **0.5931** | Pleural scarring |
+| **Pneumothorax** | **0.8132** | **0.5779** | Fine visceral pleural line edge |
+| **Mass** | **0.7723** | **0.5498** | Focal soft-tissue opacity |
+| **Nodule** | **0.6487** | **0.5133** | Small circular focal lesion ($\le 3\text{cm}$) |
 | **Emphysema** | **0.7770** | **0.5083** | Diffuse hyperlucency |
-| **Mass** | **0.7723** | **0.5498** | Focal opacity |
-| **Atelectasis** | **0.7643** | **0.6245** | Volume loss and lung collapse |
-| **Pleural Thickening**| **0.7508** | **0.5931** | Apical and lateral pleural scarring |
-| **Pneumonia** | **0.7266** | **0.6403** | Patchy focal/diffuse infiltrate |
-| **Fibrosis** | **0.7184** | **0.6278** | Reticular pattern identification |
-| **Infiltration** | **0.6634** | **0.5971** | Ill-defined parenchymal opacity |
-| **Nodule** | **0.6487** | **0.5133** | Small spherical focal lesion |
-| **Macro Average** | **0.7678** | **0.6174** | **52.7% fewer parameters, superior calibration** |
+| **Macro Average** | **0.7678** | **0.6174** | **Baseline leads on raw sensitivity** |
 
 ---
 
-## 4. Discussion & Key Findings
+## 5. Discussion: Why Does the Gap Exist?
 
-### 4.1 Superior Calibration for Safe Clinical Deployment
-A critical hazard in clinical AI is overconfident misprediction. As evidenced by the **Expected Calibration Error (ECE)**:
-$$\text{ECE} = \sum_{m=1}^M \frac{|B_m|}{N} \left| \text{acc}(B_m) - \text{conf}(B_m) \right|$$
-- MedViT-Lite achieves an **ECE of 0.0078**, outperforming ResNet-50 (0.0124) by **37.1%**.
-- This indicates that MedViT-Lite's predicted probabilities correspond closely to true empirical ground-truth likelihoods, enabling reliable clinical triage and risk-stratification thresholds.
-
-### 4.2 Parameter and Computational Footprint
-- MedViT-Lite operates with **11.36 million parameters**, compared to 24.0 million for ResNet-50.
-- With 50% patch sparsity in DPS, attention matrix multiplications are accelerated by $4\times$, making the model suitable for edge tablets, portable ultrasound systems, and embedded diagnostic assistants.
-
----
-
-## 5. Limitations
-
-1. **Pretraining Asymmetry**: The ResNet-50 baseline utilized supervised transfer learning weights from ImageNet-1k (1.28M natural images), providing strong low-level feature representations. In contrast, MedViT-Lite was trained **fully from scratch** on ChestMNIST without pretraining. Vision Transformers typically require large-scale pretraining (or self-supervised masked autoencoding) to develop strong spatial priors.
-2. **Resolution Subsampling**: ChestMNIST native resolution is $28 \times 28$ pixels. Bilinear upsampling to $224 \times 224$ inevitably limits the fine structural detail necessary for subtle findings such as small solitary pulmonary nodules ($\le 5\text{mm}$) and early interstitial fibrosis.
-3. **Multi-label Hard-Thresholding**: At the fixed decision threshold of $0.5$, macro F1 remains low due to extreme class imbalance (prevalences as low as $0.18\%$). Post-hoc threshold tuning on validation curves is required for clinical decision operating points.
+1. **The Vision Transformer Data Hunger:**
+   Unlike CNNs, which have built-in translation equivariance and localized receptive fields, Vision Transformers have no spatial inductive bias. Without large-scale pretraining (e.g. on ImageNet or medical datasets like MIMIC-CXR), training a ViT *from scratch* on small/medium datasets is well known to underperform CNNs.
+2. **Impact of 50% Patch Pruning without Pretrained Priors:**
+   Pruning 50% of patches during early epochs before the network has learned stable representations may discard subtle pathological cues.
+3. **Resolution Bottleneck:**
+   ChestMNIST images are natively $28 \times 28$ pixels. Bilinear interpolation to $224 \times 224$ produces smooth low-frequency patches that lack the high-frequency textural detail Transformers thrive on.
+4. **Positive Takeaway (Model Footprint & Calibration):**
+   MedViT-Lite demonstrates that a lightweight 11.36M parameter ViT can be trained stably with zero memory leaks and low calibration error (ECE = 0.0078), establishing a solid modular codebase for future pretraining experiments.
 
 ---
 
-## 6. Future Perspectives & Roadmap
+## 6. Limitations & Future Roadmap
 
-1. **Self-Supervised Pretraining (Med-DINOv2)**: Implement Masked Autoencoders (MAE) and self-distillation (DINOv2) on full-resolution ($1024 \times 1024$) NIH ChestX-ray14 and MIMIC-CXR datasets prior to edge sparsification.
-2. **High-Resolution Multi-Scale Processing**: Extend DPS to process multi-scale image pyramids, preserving full resolution only on candidate anomaly patches selected by the sparsifier.
-3. **Edge Quantization & TensorRT Deployment**: Export MedViT-Lite to INT8 and FP16 ONNX/TensorRT engines for sub-10ms inference on NVIDIA Jetson Orin and Apple Neural Engine.
-4. **Streaming Ultrasound / Endoscopy Evaluation**: Benchmark the Selective Frame Cache (SFC) on continuous video streams (EchoNet, colonoscopy video) to quantify temporal FLOP savings.
+- **Self-Supervised Medical Pretraining:** Pretrain the Transformer using Masked Autoencoding (MAE) or DINOv2 on unlabelled full-resolution ($1024 \times 1024$) chest X-rays.
+- **Adaptive Pruning Warm-up:** Gradually ramp up patch sparsity (from 0% to 50%) during training rather than applying 50% pruning from epoch 1.
+- **Per-Class Threshold Tuning:** Calibrate decision thresholds using Youden's $J$ statistic to compute realistic clinical F1 and sensitivity scores.
+- **Physical Edge Deployment:** Benchmark exported ONNX/TensorRT engines on NVIDIA Jetson or Raspberry Pi hardware.
 
 ---
 
 ## 7. Conclusion
 
-MedViT-Lite provides a modular, theoretically grounded, and empirically validated architecture for lightweight medical vision. By combining dynamic patch sparsification, hierarchical attention, and uncertainty estimation, it achieves competitive diagnostic sensitivity with exceptional probabilistic calibration and low compute overhead.
+This project provided a comprehensive, hands-on empirical study of lightweight Vision Transformers in medical imaging. While the model trained from scratch did not surpass the pretrained CNN baseline in raw AUC, it confirmed the feasibility of dynamic patch sparsification and uncertainty estimation in a compact 11.36M parameter architecture.
 
 ---
 
-*Citation:*
-```bibtex
-@article{medvitlite2026,
-  title={MedViT-Lite: A Hierarchical Adaptive Vision Transformer for Resource-Constrained Medical Image Diagnosis},
-  author={ThePerformer0 and Contributors},
-  journal={GitHub Repository: ThePerformer0/MedVit-Lite-Full},
-  year={2026}
-}
-```
+*Author Contact & Collaboration:*  
+Feel free to open an issue or connect on GitHub: [ThePerformer0/MedVit-Lite-Full](https://github.com/ThePerformer0/MedVit-Lite-Full)
