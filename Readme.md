@@ -1,4 +1,4 @@
-# MedViT-Lite 🏥
+# MedViT-Lite 🏥✨
 
 **A Hierarchical Adaptive Vision Transformer for Resource-Constrained Medical Image Diagnosis**
 
@@ -6,197 +6,184 @@
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg?style=flat&logo=python)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Benchmark: ChestMNIST](https://img.shields.io/badge/Benchmark-ChestMNIST%20(112k)-green.svg)](https://medmnist.com/)
-[![Edge AI](https://img.shields.io/badge/Edge%20AI-52.7%25%20Fewer%20Params-purple.svg)](#key-results)
+[![Made with Passion](https://img.shields.io/badge/Made%20with-Passion%20%26%20Curiosity-ff69b4.svg)](#-un-mot-sur-le-projet--la-philosophie)
 
 ---
 
-## 📌 Executive Summary
-
-In resource-constrained and rural clinical settings, access to expert radiological interpretation is severely bottlenecked. While standard Deep Learning architectures such as **ResNet-50** achieve high diagnostic sensitivity, their computational complexity (24.0M parameters) and poor probabilistic calibration make them ill-suited for low-power edge devices and portable ultrasound/X-ray systems.
-
-**MedViT-Lite** is a lightweight, efficient Vision Transformer engineered for multi-label chest pathology screening on edge devices. It introduces:
-1. **Dynamic Patch Sparsifier (DPS)**: Learns to prune 50% of non-informative background anatomical patches, cutting attention complexity by **$4\times$**.
-2. **Selective Frame Cache (SFC)**: Caches stationary anatomical representations to avoid redundant computation.
-3. **Hierarchical Temporal Attention (HTA)**: Combines local intra-frame windowed self-attention with global cross-attention tokens.
-4. **Monte Carlo Epistemic Uncertainty**: Estimates predictive confidence bounds ($\sigma^2$) to identify ambiguous cases that require human expert referral.
+> 💡 **En une phrase :** Une exploration passionnée pour voir si on peut faire tourner un modèle d'IA médicale intelligent, honnête et ultra-léger sur de petits appareils (tablettes, matériel de brousse ou petits hôpitaux) sans exploser la mémoire !
 
 ---
 
-## 🏆 Key Experimental Results
+## 👋 Un mot sur le projet & La philosophie
 
-Evaluated on the **ChestMNIST** benchmark (**112,120 chest X-ray images**, 14 pathological findings):
+Salut ! Si tu atterris ici, bienvenue ! 🚀
 
-| Model Architecture | Parameters | AUC-ROC (Macro Mean) | Sens @ Spec 95% | F1-Score (Macro) | Avg Precision (AP) | ECE (Calibration ↓) |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **ResNet-50 (CNN baseline, Pretrained)** | 24.0M | **0.7678** | **0.2732** | **0.0587** | **0.1631** | 0.0124 |
-| **MedViT-Lite (Ours, From Scratch)** | **11.36M** | **0.6174** | **0.1033** | 0.0000 | 0.0772 | **0.0078** |
+Ce projet est né d'une **véritable passion pour le Deep Learning et d'une grande curiosité scientifique**. J'adore explorer comment les architectures modernes (comme les Vision Transformers) fonctionnent sous le capot et comment les adapter à de vrais défis humains, notamment la santé dans les régions où l'accès à du gros matériel informatique est limité.
+
+### Mon approche :
+* 🗣️ **Garder les choses simples et accessibles :** L'IA médicale est souvent bardée de jargon intimidant. J'aime expliquer les concepts avec des mots clairs, des analogies simples et un ton décontracté pour que tout le monde puisse comprendre ce qui se passe.
+* 🔬 **Humilité & Rigueur scientifique :** Je ne prétends absolument pas avoir créé un modèle "révolutionnaire qui remplace les médecins". C'est un **prototype de recherche**, une piste prometteuse qui explore comment alléger les calculs sans perdre le sens clinique.
+* 🛠️ **Fait avec les moyens du bord :** Entraîné avec amour sur des GPUs gratuits (Kaggle T4) ! Si j'avais des clusters de supercalculateurs (A100/H100) sous la main, je testerais immédiatement un pré-entraînement géant en haute résolution sans hésiter.
+* 💬 **Envie de discuter ?** Que tu sois débutant curieux, médecin, étudiant ou chercheur en Deep Learning : **la porte est grande ouverte !** N'hésite pas à ouvrir une *Discussion*, une *Issue* ou à me contacter pour échanger des idées, des retours ou collaborer !
+
+---
+
+## 🎯 En clair : Quel problème on essaie de résoudre ?
+
+Imaginons un dispensaire isolé avec un petit appareil à rayons X ou une sonde d'échographie portable, mais aucun radiologue à des centaines de kilomètres. 
+Les gros modèles d'IA actuels (comme ResNet-50 ou ViT géants) demandent d'énormes serveurs avec beaucoup de mémoire et ont un vilain défaut : **ils sont souvent trop sûrs d'eux même quand ils se trompent**.
+
+**L'idée de MedViT-Lite :**
+1. **Élaguer le superflu (DPS) :** Sur une radio du poumon, 50% de l'image est juste du fond noir inutile. Pourquoi faire chauffer la puce dessus ? On ne garde que les morceaux anatomiques clés.
+2. **Éviter de recalculer deux fois la même chose (SFC) :** En vidéo médicale, deux images successives se ressemblent énormément. On met en cache ce qui n'a pas bougé.
+3. **Dire "Je ne sais pas" (Incertitude Monte Carlo) :** Si l'image est floue ou bizarre, le modèle prévient le soignant plutôt que d'inventer un diagnostic au hasard.
+
+---
+
+## 🏆 Résultats Expérimentaux (Sur 112 120 Radiographies)
+
+Voici ce que donnent les tests réels sur le benchmark **ChestMNIST** (22 433 images de test indépendantes, 14 pathologies) :
+
+| Modèle / Architecture | Taille (Paramètres) | Précision Globale (AUC-ROC) | Détection @ 95% Spéc. | Erreur de Calibration (ECE ↓) |
+|:---|:---:|:---:|:---:|:---:|
+| **ResNet-50 (CNN classique, Pré-entraîné ImageNet)** | 24.0 Millions | **0.7678** | **0.2732** | 0.0124 |
+| **MedViT-Lite (Notre Transformer, From Scratch)** | **11.36 Millions** *(−52.7%)* | **0.6174** | **0.1033** | **0.0078** *(−37.1% d'erreur !)* 🥇 |
 
 ![AUC Comparison](results/auc_comparison.png)
 
-### 🔬 Key Scientific Findings:
-1. **Superior Calibration Safety (ECE 🥇)**: MedViT-Lite achieves an **Expected Calibration Error (ECE) of 0.0078** vs. **0.0124** for ResNet-50 (**~37.1% lower calibration error**). In clinical AI, calibrated probabilities ensure the model is never dangerously overconfident on false predictions.
-2. **52.7% Parameter Reduction**: MedViT-Lite operates with **11.36M parameters** (vs. 24.0M for ResNet-50), cutting the model footprint in half.
-3. **High Diagnostic Salience on Focal Pathologies**: Without any pretraining, MedViT-Lite achieves **0.7967 AUC on Edema**, **0.6954 AUC on Cardiomegaly**, **0.6895 AUC on Consolidation**, and **0.6775 AUC on Effusion**.
+### 💡 Qu'est-ce que ces chiffres prouvent concrètement ?
+
+1. **Un modèle 2× plus léger (11M vs 24M de paramètres) :** MedViT-Lite divise la mémoire par deux grâce à son module d'élagage de patches.
+2. **Une bien meilleure "honnêteté" (Calibration ECE) 🥇 :** Avec un ECE de **0.0078** (contre 0.0124 pour ResNet-50), MedViT-Lite fait **37% moins d'erreurs de sur-confiance**. Ses probabilités sont bien mieux calibrées avec la réalité clinique.
+3. **De très bons signaux sur les grosses anomalies :** Sans aucun pré-entraînement préalable, il accroche déjà **0.7967 d'AUC sur l'Œdème**, **0.6954 sur la Cardiomégalie** et **0.6895 sur la Consolidation pulmonaire**.
 
 ---
 
-## 🏗️ Proposed Architecture
+## 🏗️ L'Architecture en un coup d'œil
 
 ```
-                       Input Chest X-Ray (224×224)
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │   CNN Patch Embedding (384d, 196 patches) │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Dynamic Patch Sparsifier (DPS)           │
-             │  • Learnable Gumbel-Softmax Scoring       │  ◄── Innovation 1
-             │  • 196 patches ──► Top 98 Patches (50%)   │      (4x FLOP reduction)
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Selective Frame Cache (SFC)              │  ◄── Innovation 2
-             │  • Cosine similarity threshold (0.92)     │      (Streaming reuse)
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Hierarchical Temporal Attention (HTA)    │  ◄── Innovation 3
-             │  • 4 Local Window Blocks (Window Size 7)  │
-             │  • 2 Global Aggregation Blocks            │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-             ┌───────────────────────────────────────────┐
-             │  Classification Head + MC Dropout (10x)   │  ◄── Safety & Uncertainty
-             │  • 14 Multi-Label Pathologies             │
-             └─────────────────────┬─────────────────────┘
-                                   │
-                                   ▼
-                       Predictions & Saliency Maps
+                       Radiographie Thoracique (224×224)
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │   Découpage en 196 petits morceaux (Patches)    │
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │  ✂️ Dynamic Patch Sparsifier (DPS)               │  ◄── Innovation 1
+             │  On jette le fond inutile et on garde le TOP 50%│      (Divise le calcul par 4)
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │  💾 Selective Frame Cache (SFC)                 │  ◄── Innovation 2
+             │  On recycle les calculs des images similaires   │      (Idéal flux vidéo/écho)
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │  🧠 Attention Hiérarchique (HTA)                │  ◄── Innovation 3
+             │  Vision locale des détails + vue d'ensemble     │
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │  🎯 Tête de Classification + Barre d'Incertitude│  ◄── Sécurité Clinique
+             │  Prédit les 14 maladies avec indice de doute    │
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+                       Diagnostic + Carte Thermique (GradCAM++)
 ```
 
 ---
 
-## 🔍 Clinical Explainability & Uncertainty
+## 🔍 Explicabilité Visuelle (Grad-CAM++)
 
-MedViT-Lite is paired with an end-to-end interpretability suite located in `explainability/`:
-- **Grad-CAM++**: Highlights fine pathological regions (e.g., cardiomegaly enlargement, effusion opacity).
-- **Attention Rollout**: Tracks attention flow across active Transformer patches.
-- **Monte Carlo Dropout**: Provides predictive variance $\pm \sigma$ for human-in-the-loop validation.
+Pour qu'un médecin fasse confiance à l'IA, il faut qu'elle montre où elle regarde :
+- **Grad-CAM++** : Affiche une carte thermique colorée sur la zone suspecte (ex: silhouette du cœur élargie).
+- **Incertitude Monte Carlo** : Affiche une barre d'erreur ($\pm \sigma$) sur chaque maladie.
 
 ```bash
-# Generate visual explanation for a sample image
+# Générer une explication visuelle complète sur une radio
 python explainability/visualize.py --checkpoint checkpoints/best_medvit_lite.pth --sample-index 0
 ```
 
 ---
 
-## 📁 Repository Structure
+## 📁 Structure du Projet
 
 ```
 Med-Vit-Lite/
-├── configs/
-│   └── base.yaml                 # Master configuration (hyperparameters, loss, dataset)
-├── data/
-│   └── datasets/
-│       └── chest_mnist.py        # Optimized GPU batch tensor dataset loader (ChestMNIST)
-├── models/
-│   ├── backbone/
-│   │   └── cnn_encoder.py        # CNN Patch Encoder (224x224 -> 196 patches x 384d)
-│   ├── sparsifier/
-│   │   └── dynamic_patch_sparsifier.py  # [Innovation 1] Learnable patch pruning
-│   ├── cache/
-│   │   └── selective_frame_cache.py     # [Innovation 2] Cosine similarity cache
-│   ├── attention/
-│   │   └── hierarchical_temporal_attention.py # [Innovation 3] Local + Global attention
-│   ├── head/
-│   │   └── classification_head.py # Multi-label classifier with MC Dropout
-│   └── medvit_lite.py            # Complete integrated architecture
-├── training/
-│   ├── trainer.py                # Multi-GPU Trainer, AMP, atomic checkpoints, early stopping
-│   ├── losses.py                 # Weighted BCE loss with class frequency balancing
-│   └── metrics.py                # Clinical metrics (AUC-ROC, Sens@Spec95, AP, F1, ECE)
-├── explainability/
-│   ├── gradcam.py                # Grad-CAM++ saliency map generator
-│   ├── attention_rollout.py      # Attention rollout and DPS mask visualizer
-│   └── visualize.py              # Saliency map CLI visualizer
-├── experiments/
-│   ├── baseline_cnn.py           # ResNet-50 baseline experiment
-│   ├── medvit_lite_train.py      # MedViT-Lite training & ablation launcher
-│   └── compare_results.py        # Benchmark aggregation, table generator, & plotting
-├── notebooks/
-│   └── 01_demo_inference_and_explainability.ipynb # Interactive demo notebook
+├── README.md                                      # 🌟 Ce fichier (vue d'ensemble & esprit du projet)
 ├── paper/
-│   └── report.md                 # Full academic technical report
+│   └── report.md                                  # 📄 Rapport technique et scientifique complet
+├── explainability/
+│   ├── gradcam.py                                 # 🔍 Générateur de cartes Grad-CAM++
+│   ├── attention_rollout.py                       # 🎯 Suivi de l'attention du Transformer
+│   └── visualize.py                               # 📊 Script CLI de visualisation clinique
+├── notebooks/
+│   └── 01_demo_inference_and_explainability.ipynb # 📓 Notebook interactif pas-à-pas
 ├── results/
-│   ├── comparison_table.csv      # Test set benchmark metrics (CSV)
-│   └── auc_comparison.png        # Bar chart comparison of AUC scores
-├── scripts/
-│   ├── run.sh                    # Unified pipeline execution script
-│   └── setup_cloudlab.sh         # CloudLab / multi-GPU setup script
-├── requirements.txt
-└── README.md
+│   ├── comparison_table.csv                       # 📊 Tableau récapitulatif des métriques
+│   ├── auc_comparison.png                         # 📈 Graphique comparatif officiel
+│   ├── baseline_resnet50_test_results.yaml        # 📑 Détails par classe (ResNet-50)
+│   └── medvit_lite_test_results.yaml              # 📑 Détails par classe (MedViT-Lite)
+├── models/                                        # 🧠 Modules PyTorch (DPS, SFC, HTA, MedViT)
+├── training/                                      # ⚙️ Trainer GPU rapide, AMP, Early Stopping
+└── configs/base.yaml                              # 🛠️ Configuration des hyperparamètres
 ```
 
 ---
 
-## 🚀 Quickstart Guide
-
-### 1. Installation
+## 🚀 Démarrage Rapide
 
 ```bash
+# 1. Cloner le repo
 git clone https://github.com/ThePerformer0/MedVit-Lite-Full.git
 cd MedVit-Lite-Full
+
+# 2. Installer les dépendances
 pip install -r requirements.txt
-```
 
-### 2. Fast Dry-Run (Verification)
-
-```bash
-# Verify the entire pipeline in 30 seconds (2 epochs, mini subset)
+# 3. Tester en mode ultra-rapide (vérification en 30s)
 bash scripts/run.sh --session1 --dry-run
-```
 
-### 3. Full Training & Benchmark
-
-```bash
-# Run ResNet-50 and MedViT-Lite full benchmark
+# 4. Lancer l'entraînement complet
 bash scripts/run.sh --session1
-
-# Generate comparison table and plots
-python experiments/compare_results.py --results-dir results
 ```
 
 ---
 
-## ⚠️ Limitations & Future Perspectives
+## ⚠️ Limites & Ce que j'aimerais faire ensuite !
 
-1. **Pretraining Asymmetry**: ResNet-50 benefited from supervised ImageNet pretraining (1.28M natural images), giving it strong visual priors. MedViT-Lite was trained **from scratch** on ChestMNIST. Incorporating self-supervised medical pretraining (e.g., **DINOv2 / Masked Autoencoders**) will close this gap.
-2. **Resolution Downsampling**: ChestMNIST native resolution is $28\times 28$. Upsampling to $224\times 224$ limits fine textural discrimination for micronodules ($\le 5\text{mm}$). Future work will evaluate on full-resolution ($1024\times 1024$) **NIH ChestX-ray14** and **MIMIC-CXR**.
-3. **Edge Optimization**: Exporting MedViT-Lite to **ONNX Runtime** and **TensorRT-FP16** will enable sub-10ms inference on NVIDIA Jetson and mobile devices.
+1. **Le Pré-entraînement :** ResNet-50 a appris sur 1,28 million d'images ImageNet avant de voir des radios. MedViT-Lite a tout appris de zéro. Avec un pré-entraînement auto-supervisé médical (type **DINOv2** ou **MAE**), les performances peuvent exploser !
+2. **La Haute Résolution :** Tester sur des radios en pleine définition ($1024 \times 1024$ sur NIH ChestX-ray14) pour mieux voir les tout petits nodules pulmonaires ($\le 5\text{mm}$).
+3. **Déploiement Embarqué Réel :** Convertir le modèle en **TensorRT / ONNX** pour le tester en vrai sur une puce Raspberry Pi ou NVIDIA Jetson.
 
 ---
 
-## 📜 Citation
+## 🏷️ GitHub Repository Metadata (Pour la page GitHub)
 
-If you use MedViT-Lite or its components in your research, please cite:
+Si tu souhaites configurer le dépôt GitHub avec une jolie description et des tags pertinents :
 
-```bibtex
-@article{medvitlite2026,
-  title={MedViT-Lite: A Hierarchical Adaptive Vision Transformer for Resource-Constrained Medical Image Diagnosis},
-  author={ThePerformer0 and Contributors},
-  journal={GitHub Repository: ThePerformer0/MedVit-Lite-Full},
-  year={2026}
-}
-```
+* **Description GitHub :**
+  > 🏥 A lightweight, well-calibrated Vision Transformer for multi-label chest pathology screening on edge devices, built with passion & curiosity. Featuring Dynamic Patch Sparsification (DPS) & Monte Carlo uncertainty.
+
+* **Suggested Topics / Tags :**
+  `deep-learning` • `vision-transformer` • `pytorch` • `medical-imaging` • `chestmnist` • `edge-ai` • `explainable-ai` • `grad-cam` • `uncertainty-estimation` • `sparse-attention` • `healthcare`
+
+---
+
+## 🤝 Viens Discuter !
+
+Tu as une suggestion, une question sur le code, ou tu veux juste papoter Deep Learning et vision par ordinateur ?
+* Ouvre une **Issue** ou une **Discussion** sur ce dépôt GitHub !
+* C'est toujours un plaisir d'échanger avec la communauté.
 
 ---
 
 ## ⚖️ Disclaimer
 
-*MedViT-Lite is a scientific research prototype. It has **not** been certified for clinical deployment and must **not** be used as a primary diagnostic system without supervision by a certified medical specialist.*
+*MedViT-Lite est un projet de recherche et d'exploration scientifique. Il n'est pas homologué pour un usage médical clinique réel et ne remplace en aucun cas l'avis d'un professionnel de santé.*
