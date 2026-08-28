@@ -20,6 +20,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
@@ -95,7 +101,7 @@ def print_comparison_table(results: dict):
 def save_csv(results: dict, output_path: str):
     """Sauvegarde le tableau en CSV."""
     import csv
-    with open(output_path, "w", newline="") as f:
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         # En-tête
         header = ["Model"] + [name for _, name in METRICS_TO_SHOW]
