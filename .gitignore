@@ -15,10 +15,10 @@ env/
 # Data (too large for git)
 data/raw/
 data/processed/
-*.csv
-*.h5
-*.hdf5
-*.pkl
+data/**/*.csv
+data/**/*.h5
+data/**/*.hdf5
+data/**/*.pkl
 
 # Model checkpoints (too large for git)
 checkpoints/
@@ -44,6 +44,10 @@ notebooks/.ipynb_checkpoints/
 .DS_Store
 Thumbs.db
 
-# Results (keep structure, not files)
-results/*.png
-results/*.json
+# Results Whitelist (keep final benchmark tables and plots for README)
+!results/
+!results/*.png
+!results/*.csv
+!results/*.yaml
+results/explainability/
+

@@ -1,0 +1,3 @@
+Model,AUC-ROC (mean),Sensitivity @ Spec 95% (mean),F1-Score (macro),Average Precision (mean),ECE (Calibration ↓)
+ResNet-50 (CNN baseline),0.7678,0.2732,0.0587,0.1631,0.0124
+MedViT-Lite (FULL — ours),0.6174,0.1033,0.0000,0.0772,0.0078
